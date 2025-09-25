@@ -243,28 +243,27 @@ export default function PreviewPage() {
     return tilts[hash % tilts.length]
   }
 
+  // Store random positions for each photo to avoid recalculation
+  const photoPositions = useRef<Map<string, { x: number, y: number }>>(new Map())
+
   const getRandomPosition = (photoId: string) => {
-    // Better hash function using multiple parts of the UUID
-    const parts = photoId.split('-')
-    const hash1 = parts[0] ? parseInt(parts[0].slice(0, 8), 16) : 0
-    const hash2 = parts[1] ? parseInt(parts[1].slice(0, 4), 16) : 0
-    const hash3 = parts[2] ? parseInt(parts[2].slice(0, 4), 16) : 0
-
-    // Add timestamp factor for photos arriving at the same time (but keep it deterministic per photo)
-    const timeHash = parseInt(photoId.slice(-8), 16) || Date.now()
-
-    // Use different parts of UUID for X and Y to ensure good distribution
-    const randomX = ((hash1 + timeHash) % 140) - 70 // -70% to +70% (wider spread)
-    const randomY = ((hash2 + timeHash * 3) % 100) - 50 // -50% to +50%
-
-    // Add more variation using the third hash and time
-    const variationX = ((hash3 + timeHash * 7) % 30) - 15 // Additional -15% to +15%
-    const variationY = (((hash1 + hash2 + timeHash * 13) % 30) - 15) // Additional -15% to +15%
-
-    return {
-      x: Math.max(-75, Math.min(75, randomX + variationX)), // Keep within bounds
-      y: Math.max(-55, Math.min(55, randomY + variationY))
+    // If we already calculated a position for this photo, return it
+    if (photoPositions.current.has(photoId)) {
+      return photoPositions.current.get(photoId)!
     }
+
+    // Generate truly random position for each photo
+    const randomX = (Math.random() * 150) - 75 // -75% to +75%
+    const randomY = (Math.random() * 110) - 55 // -55% to +55%
+
+    const position = {
+      x: Math.max(-75, Math.min(75, randomX)),
+      y: Math.max(-55, Math.min(55, randomY))
+    }
+
+    // Store the position so it stays consistent for this photo
+    photoPositions.current.set(photoId, position)
+    return position
   }
 
   return (
@@ -336,7 +335,11 @@ export default function PreviewPage() {
                     zIndex: photo.isNewlyAdded ? 1000 : 500 - index, // Higher base z-index so newer photos are always on top
                     transition: photo.isNewlyAdded ? 'none' : 'transform 0.8s ease-out',
                     opacity: photo.imageLoaded ? 1 : 0, // Hide until loaded
-                  }}
+                    // CSS custom properties for animation target position
+                    '--target-x': `${position.x}%`,
+                    '--target-y': `${position.y}%`,
+                    '--target-rotate': `${tilt}deg`,
+                  } as React.CSSProperties}
                 >
                   <div className="relative">
                     {photo.imageLoaded ? (
