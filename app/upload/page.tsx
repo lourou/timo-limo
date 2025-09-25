@@ -210,14 +210,14 @@ export default function UploadPage() {
           })}
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="bg-white/95 backdrop-blur-sm rounded-2xl px-8 py-6 shadow-xl border border-gray-200 text-center animate-bounce">
-              <div className="text-4xl mb-2">📸🎉</div>
+              <div className="text-4xl mb-2 animate-pulse">📸🎉</div>
               <h3 className="text-xl font-semibold text-gray-800 mb-2">Photos Uploaded!</h3>
               <p className="text-sm text-gray-600 mb-4">Your memories are safely stored</p>
               <button
                 onClick={uploadMore}
-                className="bg-gray-900 text-white px-6 py-2 rounded-xl text-sm font-medium hover:bg-gray-800 transition-colors pointer-events-auto"
+                className="bg-gray-900 text-white px-6 py-2 rounded-xl text-sm font-medium hover:bg-gray-800 transition-all duration-300 pointer-events-auto animate-pulse hover:animate-none hover:scale-105 shadow-lg hover:shadow-xl"
               >
-                Upload More Photos
+                📸 Upload More Photos 🎉
               </button>
             </div>
           </div>
