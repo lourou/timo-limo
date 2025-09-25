@@ -3,25 +3,16 @@ name = "timo-limo"
 compatibility_date = "2024-09-25"
 compatibility_flags = ["nodejs_compat"]
 
-# Production
-[env.production]
-name = "timo-limo"
-
-# Development
-[env.development]
-name = "timo-limo-dev"
-
 # D1 Database
 [[d1_databases]]
 binding = "DB"
-database_name = "timo-limo-db"
-database_id = "your-database-id-here"
+database_name = "timo-limo-2025-09"
+database_id = "59137a04-665c-4f09-a0e6-3bb456994a72"
 
 # R2 Bucket
 [[r2_buckets]]
 binding = "R2"
-bucket_name = "timo-limo-photos"
-preview_bucket_name = "timo-limo-photos-preview"
+bucket_name = "timo-limo-2025-09"
 
 # Environment Variables
 [vars]
@@ -29,8 +20,5 @@ NEXT_PUBLIC_APP_URL = "https://timo-limo.pages.dev"
 MAX_FILE_SIZE = "52428800"
 ALLOWED_ORIGINS = "https://timo-limo.pages.dev"
 
-# Pages Configuration
-[pages]
-name = "timo-limo"
-build_command = "npm run build"
-build_output_dir = ".vercel/output/static"
+# Pages build configuration
+pages_build_output_dir = ".vercel/output/static"

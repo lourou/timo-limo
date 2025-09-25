@@ -16,12 +16,24 @@ export interface Photo {
   order: number
 }
 
-// This will be available in the Cloudflare Workers environment
-declare global {
-  const DB: D1Database
+// Get DB from Cloudflare Workers environment
+function getDB(): D1Database {
+  // In Edge Runtime, bindings are available on process.env
+  if (typeof process !== 'undefined' && (process.env as any).DB) {
+    return (process.env as any).DB
+  }
+
+  // Fallback to global (production deployment)
+  const globalDB = (globalThis as any).DB
+  if (globalDB) {
+    return globalDB
+  }
+
+  throw new Error('D1 database not available. Make sure bindings are configured in wrangler.toml')
 }
 
 export async function createBatch(batch: PhotoBatch): Promise<void> {
+  const DB = getDB()
   await DB.prepare(`
     INSERT INTO batches (id, uploader_name, comment, timestamp)
     VALUES (?, ?, ?, ?)
@@ -29,15 +41,18 @@ export async function createBatch(batch: PhotoBatch): Promise<void> {
 }
 
 export async function getBatch(batchId: string): Promise<PhotoBatch | null> {
+  const DB = getDB()
   const result = await DB.prepare(`
     SELECT id, uploader_name as uploaderName, comment, timestamp
     FROM batches WHERE id = ?
   `).bind(batchId).first()
-  
-  return result as PhotoBatch | null
+
+  if (!result) return null
+  return result as unknown as PhotoBatch
 }
 
 export async function addPhoto(photo: Photo): Promise<void> {
+  const DB = getDB()
   await DB.prepare(`
     INSERT INTO photos (id, batch_id, original_url, thumbnail_url, uploader_name, comment, uploaded_at, order_index)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -54,8 +69,9 @@ export async function addPhoto(photo: Photo): Promise<void> {
 }
 
 export async function getPhoto(photoId: string): Promise<Photo | null> {
+  const DB = getDB()
   const result = await DB.prepare(`
-    SELECT 
+    SELECT
       id,
       batch_id as batchId,
       original_url as originalUrl,
@@ -66,13 +82,15 @@ export async function getPhoto(photoId: string): Promise<Photo | null> {
       order_index as "order"
     FROM photos WHERE id = ?
   `).bind(photoId).first()
-  
-  return result as Photo | null
+
+  if (!result) return null
+  return result as unknown as Photo
 }
 
 export async function getRecentPhotos(limit: number = 50): Promise<Photo[]> {
+  const DB = getDB()
   const results = await DB.prepare(`
-    SELECT 
+    SELECT
       id,
       batch_id as batchId,
       original_url as originalUrl,
@@ -81,17 +99,18 @@ export async function getRecentPhotos(limit: number = 50): Promise<Photo[]> {
       comment,
       uploaded_at as uploadedAt,
       order_index as "order"
-    FROM photos 
-    ORDER BY uploaded_at DESC 
+    FROM photos
+    ORDER BY uploaded_at DESC
     LIMIT ?
   `).bind(limit).all()
-  
-  return results.results as Photo[]
+
+  return results.results as unknown as Photo[]
 }
 
 export async function getBatchPhotos(batchId: string): Promise<Photo[]> {
+  const DB = getDB()
   const results = await DB.prepare(`
-    SELECT 
+    SELECT
       id,
       batch_id as batchId,
       original_url as originalUrl,
@@ -100,10 +119,10 @@ export async function getBatchPhotos(batchId: string): Promise<Photo[]> {
       comment,
       uploaded_at as uploadedAt,
       order_index as "order"
-    FROM photos 
+    FROM photos
     WHERE batch_id = ?
     ORDER BY order_index ASC
   `).bind(batchId).all()
-  
-  return results.results as Photo[]
+
+  return results.results as unknown as Photo[]
 }

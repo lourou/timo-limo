@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createBatch, PhotoBatch } from '@/lib/db-d1'
 
+export const runtime = 'edge'
+
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
+    const body = await request.json() as {
+      batchId: string
+      uploaderName: string
+      comment?: string
+    }
     const { batchId, uploaderName, comment } = body
 
     if (!batchId || !uploaderName) {

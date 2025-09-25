@@ -34,51 +34,84 @@ wrangler auth login
 
 #### Create D1 Database
 ```bash
-wrangler d1 create timo-limo-db
+npx wrangler d1 create timo-limo-db
 ```
-Copy the database ID to your `wrangler.toml`
+This will output a database ID. Copy it to your `wrangler.toml`
 
 #### Create R2 Bucket
 ```bash
-wrangler r2 bucket create timo-limo-photos
+npx wrangler r2 bucket create timo-limo-photos
 ```
 
 #### Set up Database Schema
 ```bash
-wrangler d1 execute timo-limo-db --file=./schema.sql
+# Apply to local development database
+npx wrangler d1 execute your-database-name --file=./schema.sql
+
+# Apply to remote production database
+npx wrangler d1 execute your-database-name --file=./schema.sql --remote
+```
+
+#### Verify Database Setup
+```bash
+# List your databases
+npx wrangler d1 list
+
+# Test connection and see tables
+npx wrangler d1 execute your-database-name --command="SELECT name FROM sqlite_master WHERE type='table';" --remote
 ```
 
 ### 4. Configure R2 Public Access
 
-1. Go to R2 > your bucket > Settings
+1. Go to Cloudflare Dashboard > R2 > your bucket > Settings
 2. Create a Custom Domain or use R2.dev subdomain
-3. Update `R2_PUBLIC_URL` in your environment
+3. Update `R2_PUBLIC_URL` in your `wrangler.toml`
 
-### 5. Environment Variables
+### 5. Update Configuration
 
-Update `wrangler.toml` with your actual values:
-- Replace `your-database-id-here` with your D1 database ID
-- Update bucket names and public URLs
-
-For local development, create `.env.local`:
-```bash
-cp .env.local.example .env.local
+#### Update wrangler.toml
+Replace the database_id with your actual D1 database ID:
+```toml
+[[d1_databases]]
+binding = "DB"
+database_name = "your-database-name"
+database_id = "your-actual-database-id"
 ```
 
-### 6. Run Development Server
+#### Environment Variables (Optional)
+For local development with environment variables:
+```bash
+cp .env.local.example .env.local
+# Edit .env.local with your values
+```
 
+### 6. Development
+
+#### Standard Next.js Development (Fast UI iteration)
 ```bash
 npm run dev
 ```
+- Fast hot reload and debugging
+- API routes won't work (no D1/R2 bindings)
+- Best for UI/frontend development
 
-For Cloudflare Pages preview:
+#### Cloudflare Pages Development (Full stack testing)
+```bash
+npm run dev:cf
+```
+- Full Cloudflare bindings (D1 database, R2 storage)
+- Edge Runtime environment
+- Slower but works with all features
+- Use this to test API routes and database
+
+#### Quick Preview
 ```bash
 npm run preview
 ```
 
 Visit:
-- Upload: http://localhost:3000/upload
-- Preview: http://localhost:3000/preview
+- Upload: http://localhost:8788/upload (Cloudflare dev) or http://localhost:3000/upload (Next.js dev)
+- Preview: http://localhost:8788/preview (Cloudflare dev) or http://localhost:3000/preview (Next.js dev)
 
 ## Deployment to Cloudflare Pages
 
@@ -86,13 +119,69 @@ Visit:
 ```bash
 npm run deploy
 ```
+This builds and deploys to your Cloudflare Pages project
 
 ### Option 2: GitHub Integration
 1. Push your code to GitHub
 2. Go to Cloudflare Dashboard > Pages
 3. Connect your GitHub repository
-4. Set build command: `npm run build`
-5. Set output directory: `.vercel/output/static`
+4. Configure build settings:
+   - **Build command:** `npm run build:cf`
+   - **Build output directory:** `.vercel/output/static`
+   - **Environment variables:** Add any needed vars
+5. Deploy!
+
+## Database Management
+
+### Available Scripts
+
+```bash
+# Development
+npm run dev          # Standard Next.js dev (fast, no DB/storage)
+npm run dev:cf       # Cloudflare Pages dev (full features)
+npm run preview      # Same as dev:cf
+
+# Building
+npm run build        # Standard Next.js build
+npm run build:cf     # Build for Cloudflare Pages
+
+# Deployment
+npm run deploy       # Build and deploy to Cloudflare Pages
+
+# Database
+npm run db:create    # Create D1 database
+npm run db:schema    # Apply schema to local database
+npm run db:schema:remote # Apply schema to remote database
+npm run cf-typegen   # Generate Cloudflare types
+```
+
+### Useful D1 Commands
+```bash
+# List all databases
+npx wrangler d1 list
+
+# Execute SQL commands
+npx wrangler d1 execute DB_NAME --command="SELECT * FROM photos LIMIT 5;" --remote
+
+# Backup database
+npx wrangler d1 export DB_NAME --output=backup.sql
+
+# View database info
+npx wrangler d1 info DB_NAME
+```
+
+### Database Access Control
+- **You** (account owner) have full access
+- **Cloudflare Pages** automatically gets access via DB binding
+- **Team members** you invite to your Cloudflare account
+- **API tokens** can be created for external access if needed
+
+## Development Workflow
+
+1. **UI Development**: Use `npm run dev` for fast iteration
+2. **API Testing**: Use `npm run dev:cf` to test with real D1/R2 bindings
+3. **Final Testing**: Use `npm run preview` before deployment
+4. **Deploy**: Use `npm run deploy` to publish to Cloudflare Pages
 
 ## Usage
 
@@ -117,12 +206,6 @@ npm run deploy
 - **Real-time**: Server-Sent Events
 - **Image Processing**: Sharp for optimization
 
-## Cost Optimization
-
-- **Cloudflare Pages**: Free for personal use
-- **Cloudflare D1**: Free tier: 5GB storage, 25M row reads/day
-- **Cloudflare R2**: $0.015/GB stored, no egress fees
-- **Total**: **Free** for moderate usage, ~$2-5/month at scale
 
 ## License
 

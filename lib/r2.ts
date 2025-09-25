@@ -1,52 +1,32 @@
-import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3'
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
+// Access R2 from the runtime environment
+function getR2(): R2Bucket {
+  if (typeof process !== 'undefined' && process.env.NODE_ENV === 'development') {
+    throw new Error('R2 bucket not available in development mode')
+  }
+  return (globalThis as any).R2
+}
 
-const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID!
-const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID!
-const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY!
-const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME!
-const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL!
-
-export const r2Client = new S3Client({
-  region: 'auto',
-  endpoint: `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-  credentials: {
-    accessKeyId: R2_ACCESS_KEY_ID,
-    secretAccessKey: R2_SECRET_ACCESS_KEY,
-  },
-})
+function getPublicUrlBase(): string {
+  return process.env.R2_PUBLIC_URL || 'https://your-bucket.r2.dev'
+}
 
 export async function uploadToR2(
   key: string,
   body: Buffer | Uint8Array,
   contentType: string
 ): Promise<string> {
-  const command = new PutObjectCommand({
-    Bucket: R2_BUCKET_NAME,
-    Key: key,
-    Body: body,
-    ContentType: contentType,
+  const R2 = getR2()
+
+  await R2.put(key, body, {
+    httpMetadata: {
+      contentType: contentType,
+    },
   })
 
-  await r2Client.send(command)
-  
-  return `${R2_PUBLIC_URL}/${key}`
+  return `${getPublicUrlBase()}/${key}`
 }
 
-export async function getSignedUploadUrl(
-  key: string,
-  contentType: string,
-  expiresIn: number = 3600
-): Promise<string> {
-  const command = new PutObjectCommand({
-    Bucket: R2_BUCKET_NAME,
-    Key: key,
-    ContentType: contentType,
-  })
-
-  return await getSignedUrl(r2Client, command, { expiresIn })
-}
-
-export function getPublicUrl(key: string): string {
-  return `${R2_PUBLIC_URL}/${key}`
+export function getPublicUrl(key?: string): string {
+  const baseUrl = getPublicUrlBase()
+  return key ? `${baseUrl}/${key}` : baseUrl
 }
