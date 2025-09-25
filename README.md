@@ -1,13 +1,13 @@
 # Timo Limo - Photo Upload & Live Preview App
 
-A modern photo upload application with real-time preview, built with Next.js, Vercel, and Cloudflare R2.
+A modern photo upload application with real-time preview, built with Next.js and deployed on Cloudflare Pages with D1 database and R2 storage.
 
 ## Features
 
 - 📱 Mobile-optimized photo upload interface
 - 🎬 Live preview page with animated photo drops
-- 💾 Cloudflare R2 for storage (cost-effective, no egress fees)
-- 🚀 Vercel KV for metadata storage
+- 💾 Cloudflare R2 for image storage (cost-effective, no egress fees)
+- 📄 Cloudflare D1 (SQLite) for metadata storage
 - 🎨 Automatic image optimization and thumbnail generation
 - 🔗 QR code for easy sharing
 - 🍪 Cookie-based name persistence
@@ -20,69 +20,79 @@ A modern photo upload application with real-time preview, built with Next.js, Ve
 ```bash
 git clone [your-repo]
 cd timo-limo
-yarn install
+npm install
 ```
 
-### 2. Configure Cloudflare R2
+### 2. Install Wrangler CLI
 
-1. Log in to [Cloudflare Dashboard](https://dash.cloudflare.com/)
-2. Go to R2 > Create Bucket
-3. Name your bucket (e.g., `timo-limo-photos`)
-4. Go to Settings > Domain Access > Connect Domain
-5. Add a public domain for your bucket
-6. Create API tokens:
-   - Go to R2 > Manage R2 API tokens
-   - Create a new API token with Object Read & Write permissions
-   - Save the credentials
+```bash
+npm install -g wrangler
+wrangler auth login
+```
 
-### 3. Configure Vercel KV
+### 3. Create Cloudflare Resources
 
-1. In your [Vercel Dashboard](https://vercel.com/dashboard)
-2. Go to Storage > Create Database > KV
-3. Name it (e.g., `timo-limo-kv`)
-4. Copy the environment variables provided
+#### Create D1 Database
+```bash
+wrangler d1 create timo-limo-db
+```
+Copy the database ID to your `wrangler.toml`
 
-### 4. Environment Variables
+#### Create R2 Bucket
+```bash
+wrangler r2 bucket create timo-limo-photos
+```
 
-Copy `.env.local.example` to `.env.local` and fill in your values:
+#### Set up Database Schema
+```bash
+wrangler d1 execute timo-limo-db --file=./schema.sql
+```
 
+### 4. Configure R2 Public Access
+
+1. Go to R2 > your bucket > Settings
+2. Create a Custom Domain or use R2.dev subdomain
+3. Update `R2_PUBLIC_URL` in your environment
+
+### 5. Environment Variables
+
+Update `wrangler.toml` with your actual values:
+- Replace `your-database-id-here` with your D1 database ID
+- Update bucket names and public URLs
+
+For local development, create `.env.local`:
 ```bash
 cp .env.local.example .env.local
 ```
 
-Edit `.env.local` with your credentials:
-
-```env
-# Cloudflare R2
-R2_ACCOUNT_ID=your_account_id
-R2_ACCESS_KEY_ID=your_access_key
-R2_SECRET_ACCESS_KEY=your_secret_key
-R2_BUCKET_NAME=timo-limo-photos
-R2_PUBLIC_URL=https://photos.yourdomain.com
-
-# Vercel KV
-KV_URL=redis://...
-KV_REST_API_URL=https://...
-KV_REST_API_TOKEN=...
-KV_REST_API_READ_ONLY_TOKEN=...
-```
-
-### 5. Run Development Server
+### 6. Run Development Server
 
 ```bash
-yarn dev
+npm run dev
+```
+
+For Cloudflare Pages preview:
+```bash
+npm run preview
 ```
 
 Visit:
 - Upload: http://localhost:3000/upload
 - Preview: http://localhost:3000/preview
 
-## Deployment to Vercel
+## Deployment to Cloudflare Pages
 
+### Option 1: Wrangler CLI
+```bash
+npm run deploy
+```
+
+### Option 2: GitHub Integration
 1. Push your code to GitHub
-2. Import project in Vercel
-3. Add all environment variables
-4. Deploy!
+2. Go to Cloudflare Dashboard > Pages
+3. Connect your GitHub repository
+4. Set build command: `npm run build`
+5. Set output directory: `.vercel/output/static`
 
 ## Usage
 
@@ -101,18 +111,18 @@ Visit:
 ## Architecture
 
 - **Frontend**: Next.js 14 with App Router
+- **Hosting**: Cloudflare Pages
+- **Database**: Cloudflare D1 (SQLite)
 - **Storage**: Cloudflare R2 (S3-compatible)
-- **Database**: Vercel KV (Redis)
 - **Real-time**: Server-Sent Events
 - **Image Processing**: Sharp for optimization
-- **Hosting**: Vercel
 
 ## Cost Optimization
 
+- **Cloudflare Pages**: Free for personal use
+- **Cloudflare D1**: Free tier: 5GB storage, 25M row reads/day
 - **Cloudflare R2**: $0.015/GB stored, no egress fees
-- **Vercel KV**: Free tier includes 30k requests/month
-- **Vercel Hosting**: Free tier for personal use
-- **Total**: ~$5-10/month for moderate usage
+- **Total**: **Free** for moderate usage, ~$2-5/month at scale
 
 ## License
 

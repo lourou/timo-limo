@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
-import { addSSEClient, removeSSEClient } from '@/app/api/upload/route'
-import { getRecentPhotos } from '@/lib/kv'
+import { addSSEClient, removeSSEClient } from '@/lib/sse'
+import { getRecentPhotos } from '@/lib/db-d1'
 
 export async function GET(request: NextRequest) {
   const encoder = new TextEncoder()

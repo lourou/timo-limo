@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createBatch, PhotoBatch } from '@/lib/kv'
+import { createBatch, PhotoBatch } from '@/lib/db-d1'
 
 export async function POST(request: NextRequest) {
   try {

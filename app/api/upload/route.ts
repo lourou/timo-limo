@@ -1,34 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { uploadToR2, getPublicUrl } from '@/lib/r2'
-import { addPhoto, getBatch, Photo } from '@/lib/kv'
+import { addPhoto, getBatch, Photo } from '@/lib/db-d1'
 import { createThumbnail, optimizeImage } from '@/lib/image'
+import { broadcastPhoto } from '@/lib/sse'
 import { v4 as uuidv4 } from 'uuid'
 
-const MAX_FILE_SIZE = parseInt(process.env.MAX_FILE_SIZE || '20971520')
-
-let sseClients = new Set<ReadableStreamDefaultController>()
-
-export function addSSEClient(controller: ReadableStreamDefaultController) {
-  sseClients.add(controller)
-}
-
-export function removeSSEClient(controller: ReadableStreamDefaultController) {
-  sseClients.delete(controller)
-}
-
-export function broadcastPhoto(photo: Photo) {
-  const data = `data: ${JSON.stringify(photo)}\n\n`
-  const encoder = new TextEncoder()
-  const message = encoder.encode(data)
-  
-  sseClients.forEach(controller => {
-    try {
-      controller.enqueue(message)
-    } catch (error) {
-      sseClients.delete(controller)
-    }
-  })
-}
+const MAX_FILE_SIZE = parseInt(process.env.MAX_FILE_SIZE || '52428800') // 50MB default
 
 export async function POST(request: NextRequest) {
   try {
@@ -44,9 +21,18 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Only allow image files
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/heic', 'image/heif']
+    if (!allowedTypes.includes(file.type.toLowerCase())) {
+      return NextResponse.json(
+        { error: 'Only image files are allowed (JPEG, PNG, WebP, HEIC)' },
+        { status: 400 }
+      )
+    }
+
     if (file.size > MAX_FILE_SIZE) {
       return NextResponse.json(
-        { error: 'File size exceeds limit' },
+        { error: `File size exceeds limit of ${MAX_FILE_SIZE / (1024 * 1024)}MB` },
         { status: 400 }
       )
     }
