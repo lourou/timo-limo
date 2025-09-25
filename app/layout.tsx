@@ -6,7 +6,7 @@ const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
   title: 'Timo Limo - Photo Upload',
-  description: 'Share your memories instantly',
+  description: 'Share your photos instantly',
 }
 
 export default function RootLayout({

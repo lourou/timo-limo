@@ -18,6 +18,7 @@ interface Photo {
 interface PhotoState extends Photo {
   imageLoaded: boolean
   isNewlyAdded: boolean
+  zIndex: number
 }
 
 export default function PreviewPage() {
@@ -26,6 +27,7 @@ export default function PreviewPage() {
   const [qrCodeUrl, setQrCodeUrl] = useState('')
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'error'>('connecting')
   const eventSourceRef = useRef<EventSource | null>(null)
+  const zIndexCounter = useRef(1000)
 
 
   // Preload image and update state when loaded - optimized version
@@ -36,19 +38,22 @@ export default function PreviewPage() {
       // Set loading="lazy" equivalent behavior
       img.loading = 'lazy' as any
 
+      // Assign incrementing z-index for new photos
+      const assignedZIndex = isNewlyAdded ? zIndexCounter.current++ : 100
+
       const timeout = setTimeout(() => {
         // Fallback if image takes too long
-        resolve({ ...photo, imageLoaded: true, isNewlyAdded })
+        resolve({ ...photo, imageLoaded: true, isNewlyAdded, zIndex: assignedZIndex })
       }, 3000)
 
       img.onload = () => {
         clearTimeout(timeout)
-        resolve({ ...photo, imageLoaded: true, isNewlyAdded })
+        resolve({ ...photo, imageLoaded: true, isNewlyAdded, zIndex: assignedZIndex })
       }
       img.onerror = () => {
         clearTimeout(timeout)
         // Still resolve even on error to prevent hanging
-        resolve({ ...photo, imageLoaded: true, isNewlyAdded })
+        resolve({ ...photo, imageLoaded: true, isNewlyAdded, zIndex: assignedZIndex })
       }
 
       // Use the thumbnail URL directly (already optimized as 400x400)
@@ -158,7 +163,7 @@ export default function PreviewPage() {
                   return updated.slice(0, 15)
                 })
 
-                // Only reset isNewlyAdded for animated photos
+                // Reset isNewlyAdded after animation completes (but keep z-index)
                 if (shouldAnimate) {
                   setTimeout(() => {
                     setPhotos(current =>
@@ -168,7 +173,7 @@ export default function PreviewPage() {
                           : p
                       )
                     )
-                  }, 3000)
+                  }, 1200) // Match animation duration
                 }
               })
               return prev
@@ -332,7 +337,7 @@ export default function PreviewPage() {
                     left: '50%',
                     top: '50%',
                     transform: `translate(calc(-50% + ${position.x}%), calc(-50% + ${position.y}%)) rotate(${tilt}deg)`,
-                    zIndex: photo.isNewlyAdded ? 1000 : 500 - index, // Higher base z-index so newer photos are always on top
+                    zIndex: photo.zIndex, // Use stored z-index for consistent stacking
                     transition: photo.isNewlyAdded ? 'none' : 'transform 0.8s ease-out',
                     opacity: photo.imageLoaded ? 1 : 0, // Hide until loaded
                     // CSS custom properties for animation target position

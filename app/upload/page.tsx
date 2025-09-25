@@ -32,9 +32,46 @@ export default function UploadPage() {
 
 
 
-  // Upload individual file immediately with its own batch
+  // Upload individual file to existing batch
   const uploadFile = async (uploadFile: UploadFile) => {
-    const fileBatchId = uuidv4() // Each file gets its own batch
+    console.log('Upload file called:', {
+      fileId: uploadFile.id,
+      batchCreated,
+      batchId
+    })
+
+    // Ensure batch exists - create one if needed
+    if (!batchCreated && name.trim()) {
+      console.log('Creating batch in uploadFile for:', name)
+      try {
+        const batchResponse = await fetch('/api/batch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            batchId,
+            uploaderName: name,
+            comment: comment || undefined
+          })
+        })
+
+        if (!batchResponse.ok) throw new Error('Failed to create batch')
+        setBatchCreated(true)
+        console.log('Batch created in uploadFile:', batchId)
+      } catch (error) {
+        console.error('Batch creation error in uploadFile:', error)
+        setFiles(prev => prev.map(f =>
+          f.id === uploadFile.id
+            ? { ...f, status: 'error' as const }
+            : f
+        ))
+        return
+      }
+    }
+
+    if (!batchCreated && !name.trim()) {
+      console.error('Cannot upload - no name provided')
+      return
+    }
 
     setFiles(prev => prev.map(f =>
       f.id === uploadFile.id
@@ -43,23 +80,10 @@ export default function UploadPage() {
     ))
 
     try {
-      // Create batch for this file
-      const batchResponse = await fetch('/api/batch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          batchId: fileBatchId,
-          uploaderName: name,
-          comment: comment || undefined
-        })
-      })
-
-      if (!batchResponse.ok) throw new Error('Failed to create batch')
-
-      // Upload the file
+      // Upload the file to existing batch
       const formData = new FormData()
       formData.append('file', uploadFile.file)
-      formData.append('batchId', fileBatchId)
+      formData.append('batchId', batchId) // Use session batch ID
       formData.append('fileId', uploadFile.id)
 
       const response = await fetch('/api/upload', {
@@ -93,7 +117,39 @@ export default function UploadPage() {
   }
 
   const handleFileSelect = async (e: ChangeEvent<HTMLInputElement>) => {
+    console.log('File select triggered:', {
+      hasFiles: !!e.target.files,
+      showNameForm,
+      batchCreated,
+      filesLength: e.target.files?.length
+    })
+
     if (!e.target.files || showNameForm) return
+
+    // Create batch automatically if user has saved name but no batch exists
+    if (!batchCreated && name.trim()) {
+      console.log('Auto-creating batch for user with saved name:', name)
+      try {
+        const batchResponse = await fetch('/api/batch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            batchId,
+            uploaderName: name,
+            comment: comment || undefined
+          })
+        })
+
+        if (!batchResponse.ok) throw new Error('Failed to create batch')
+        setBatchCreated(true)
+        console.log('Auto-created batch:', batchId)
+      } catch (error) {
+        console.error('Auto batch creation error:', error)
+        alert('Failed to start session. Please try again.')
+        setBatchId(uuidv4()) // Reset batch ID on error
+        return
+      }
+    }
 
     const selectedFiles = Array.from(e.target.files)
 
@@ -133,7 +189,27 @@ export default function UploadPage() {
     }
 
     Cookies.set('uploaderName', name, { expires: 365 })
-    setShowNameForm(false)
+
+    // Create ONE batch for this user session
+    try {
+      const batchResponse = await fetch('/api/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          batchId,
+          uploaderName: name,
+          comment: comment || undefined
+        })
+      })
+
+      if (!batchResponse.ok) throw new Error('Failed to create batch')
+      setBatchCreated(true)
+      setShowNameForm(false)
+    } catch (error) {
+      console.error('Batch creation error:', error)
+      alert('Failed to start session. Please try again.')
+      setBatchId(uuidv4()) // Reset batch ID on error
+    }
   }
 
   // Show confetti when all uploads complete
@@ -142,15 +218,47 @@ export default function UploadPage() {
     if (files.length > 0 && completedFiles.length === files.length) {
       setTimeout(() => {
         setShowConfetti(true)
-        setTimeout(() => setShowConfetti(false), 10000) // Longer confetti - 10 seconds!
+        // Don't auto-hide confetti - user must click to dismiss
       }, 500)
     }
   }
 
-  // Upload more photos (clear current files)
-  const uploadMore = () => {
+  // Upload more photos (start new session)
+  const uploadMore = async () => {
     setFiles([])
     setShowConfetti(false)
+    setBatchId(uuidv4()) // New batch ID for new session
+    setComment('') // Clear previous comment
+
+    // If user name is already set, create batch immediately
+    if (name.trim()) {
+      try {
+        const newBatchId = uuidv4()
+        setBatchId(newBatchId)
+
+        const batchResponse = await fetch('/api/batch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            batchId: newBatchId,
+            uploaderName: name,
+            comment: comment || undefined
+          })
+        })
+
+        if (!batchResponse.ok) throw new Error('Failed to create batch')
+        setBatchCreated(true)
+        console.log('New batch created for upload more:', newBatchId)
+      } catch (error) {
+        console.error('Batch creation error on upload more:', error)
+        setBatchCreated(false)
+        // Show name form again if batch creation fails
+        setShowNameForm(true)
+      }
+    } else {
+      setBatchCreated(false)
+      setShowNameForm(true) // Show name form if no name saved
+    }
   }
 
   // Check for completion whenever files change
@@ -175,16 +283,19 @@ export default function UploadPage() {
     <div className="min-h-screen bg-gray-50 p-4 relative">
       {/* Confetti Animation */}
       {showConfetti && (
-        <div className="fixed inset-0 pointer-events-none z-50 overflow-hidden">
+        <div
+          className="fixed inset-0 z-50 overflow-hidden cursor-pointer"
+          onClick={() => setShowConfetti(false)}
+        >
           {Array.from({ length: 100 }).map((_, i) => {
-            const shapes = ['🎊', '🎉', '✨', '🌟', '⭐', '💫', '📸', '🖼️', '🎈', '🎁', '🌈', '💖', '🦄', '🎭', '🎪']
+            const shapes = ['📸', '📷', '📹', '🎬', '🖼️', '🎨', '🌟', '✨', '💫', '🎞️', '📺', '🎥', '🏞️', '🌅', '🌄', '🌆', '🌇', '🌉', '🎆', '🎇']
             const colors = ['#ff6b9d', '#45b7d1', '#96ceb4', '#feca57', '#ff9ff3', '#54a0ff', '#fd79a8', '#00cec9', '#a29bfe', '#ffeaa7']
             const isEmoji = Math.random() > 0.3 // More emojis!
 
             return (
               <div
                 key={i}
-                className="absolute animate-confetti"
+                className="absolute animate-confetti pointer-events-none"
                 style={{
                   left: `${Math.random() * 100}%`,
                   animationDelay: `${Math.random() * 3}s`,
@@ -211,8 +322,8 @@ export default function UploadPage() {
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="bg-white/95 backdrop-blur-sm rounded-2xl px-8 py-6 shadow-xl border border-gray-200 text-center animate-bounce">
               <div className="text-4xl mb-2 animate-pulse">📸🎉</div>
-              <h3 className="text-xl font-semibold text-gray-800 mb-2">Photos Uploaded!</h3>
-              <p className="text-sm text-gray-600 mb-4">Your memories are safely stored</p>
+              <h3 className="text-xl font-semibold text-gray-800 mb-2">Jean Cadre says</h3>
+              <p className="text-sm text-gray-600 mb-4">Merci beaucoup ! Thank you so much!</p>
               <button
                 onClick={uploadMore}
                 className="bg-gray-900 text-white px-6 py-2 rounded-xl text-sm font-medium hover:bg-gray-800 transition-all duration-300 pointer-events-auto animate-pulse hover:animate-none hover:scale-105 shadow-lg hover:shadow-xl"
