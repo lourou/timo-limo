@@ -30,58 +30,11 @@ export default function UploadPage() {
     }
   }, [])
 
-  // Create batch once name is provided
-  const createBatch = async () => {
-    if (!name.trim() || batchCreated) return
 
-    try {
-      const batchResponse = await fetch('/api/batch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          batchId,
-          uploaderName: name,
-          comment: comment || undefined
-        })
-      })
 
-      if (!batchResponse.ok) throw new Error('Failed to create batch')
-      setBatchCreated(true)
-    } catch (error) {
-      console.error('Batch creation error:', error)
-      setBatchId(uuidv4()) // Reset batch ID on error
-    }
-  }
-
-  // Create a resized canvas preview to avoid memory issues with full-res images
-  const createResizedPreview = (file: File): Promise<string> => {
-    return new Promise((resolve) => {
-      const img = new Image()
-      img.onload = () => {
-        const canvas = document.createElement('canvas')
-        const ctx = canvas.getContext('2d')
-
-        // Set thumbnail size
-        const maxSize = 200
-        const ratio = Math.min(maxSize / img.width, maxSize / img.height)
-        canvas.width = img.width * ratio
-        canvas.height = img.height * ratio
-
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
-          resolve(canvas.toDataURL('image/jpeg', 0.7))
-        } else {
-          resolve('')
-        }
-      }
-      img.onerror = () => resolve('')
-      img.src = URL.createObjectURL(file)
-    })
-  }
-
-  // Upload individual file immediately
+  // Upload individual file immediately with its own batch
   const uploadFile = async (uploadFile: UploadFile) => {
-    if (!batchCreated) await createBatch()
+    const fileBatchId = uuidv4() // Each file gets its own batch
 
     setFiles(prev => prev.map(f =>
       f.id === uploadFile.id
@@ -89,12 +42,26 @@ export default function UploadPage() {
         : f
     ))
 
-    const formData = new FormData()
-    formData.append('file', uploadFile.file)
-    formData.append('batchId', batchId)
-    formData.append('fileId', uploadFile.id)
-
     try {
+      // Create batch for this file
+      const batchResponse = await fetch('/api/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          batchId: fileBatchId,
+          uploaderName: name,
+          comment: comment || undefined
+        })
+      })
+
+      if (!batchResponse.ok) throw new Error('Failed to create batch')
+
+      // Upload the file
+      const formData = new FormData()
+      formData.append('file', uploadFile.file)
+      formData.append('batchId', fileBatchId)
+      formData.append('fileId', uploadFile.id)
+
       const response = await fetch('/api/upload', {
         method: 'POST',
         body: formData
@@ -102,9 +69,17 @@ export default function UploadPage() {
 
       if (!response.ok) throw new Error('Upload failed')
 
+      const result = await response.json() as { photo: { thumbnailUrl: string } }
+
       setFiles(prev => prev.map(f =>
         f.id === uploadFile.id
-          ? { ...f, status: 'complete' as const, progress: 100 }
+          ? {
+              ...f,
+              status: 'complete' as const,
+              progress: 100,
+              // Update preview to use uploaded thumbnail instead of blob
+              preview: result.photo.thumbnailUrl
+            }
           : f
       ))
     } catch (error) {
@@ -133,35 +108,17 @@ export default function UploadPage() {
     const newFiles = validFiles.map(file => ({
       id: uuidv4(),
       file,
-      preview: '', // Start with empty preview
+      preview: '', // No preview until upload completes
       progress: 0,
       status: 'pending' as const
     }))
 
     setFiles(prev => [...prev, ...newFiles])
 
-    // Generate resized previews and upload immediately
-    const processFilesAsync = async () => {
-      for (let i = 0; i < newFiles.length; i++) {
-        await new Promise(resolve => {
-          requestAnimationFrame(async () => {
-            // Create preview
-            const resizedPreview = await createResizedPreview(newFiles[i].file)
-            setFiles(prev => prev.map(f =>
-              f.id === newFiles[i].id
-                ? { ...f, preview: resizedPreview }
-                : f
-            ))
-
-            // Start upload immediately
-            uploadFile(newFiles[i])
-
-            setTimeout(resolve, 16) // ~60fps timing
-          })
-        })
-      }
-    }
-    processFilesAsync()
+    // Start uploads immediately (no local previews)
+    newFiles.forEach(file => {
+      uploadFile(file)
+    })
 
     // Reset file input so user can select more files
     e.target.value = ''
@@ -185,16 +142,15 @@ export default function UploadPage() {
     if (files.length > 0 && completedFiles.length === files.length) {
       setTimeout(() => {
         setShowConfetti(true)
-        setTimeout(() => setShowConfetti(false), 6000)
-
-        // Clear completed files after celebration
-        setTimeout(() => {
-          setFiles([])
-          setBatchId(uuidv4())
-          setBatchCreated(false)
-        }, 2000)
+        setTimeout(() => setShowConfetti(false), 10000) // Longer confetti - 10 seconds!
       }, 500)
     }
+  }
+
+  // Upload more photos (clear current files)
+  const uploadMore = () => {
+    setFiles([])
+    setShowConfetti(false)
   }
 
   // Check for completion whenever files change
@@ -220,10 +176,10 @@ export default function UploadPage() {
       {/* Confetti Animation */}
       {showConfetti && (
         <div className="fixed inset-0 pointer-events-none z-50 overflow-hidden">
-          {Array.from({ length: 60 }).map((_, i) => {
-            const shapes = ['🎊', '🎉', '✨', '🌟', '⭐', '💫']
-            const colors = ['#ff6b9d', '#45b7d1', '#96ceb4', '#feca57', '#ff9ff3', '#54a0ff']
-            const isEmoji = Math.random() > 0.4
+          {Array.from({ length: 100 }).map((_, i) => {
+            const shapes = ['🎊', '🎉', '✨', '🌟', '⭐', '💫', '📸', '🖼️', '🎈', '🎁', '🌈', '💖', '🦄', '🎭', '🎪']
+            const colors = ['#ff6b9d', '#45b7d1', '#96ceb4', '#feca57', '#ff9ff3', '#54a0ff', '#fd79a8', '#00cec9', '#a29bfe', '#ffeaa7']
+            const isEmoji = Math.random() > 0.3 // More emojis!
 
             return (
               <div
@@ -231,21 +187,21 @@ export default function UploadPage() {
                 className="absolute animate-confetti"
                 style={{
                   left: `${Math.random() * 100}%`,
-                  animationDelay: `${Math.random() * 2}s`,
-                  animationDuration: `${3 + Math.random() * 2}s`
+                  animationDelay: `${Math.random() * 3}s`,
+                  animationDuration: `${4 + Math.random() * 3}s` // Slower falling
                 }}
               >
                 {isEmoji ? (
-                  <span style={{ fontSize: `${16 + Math.random() * 8}px` }}>
+                  <span style={{ fontSize: `${18 + Math.random() * 12}px` }}>
                     {shapes[Math.floor(Math.random() * shapes.length)]}
                   </span>
                 ) : (
                   <div
                     style={{
-                      width: `${6 + Math.random() * 6}px`,
-                      height: `${6 + Math.random() * 6}px`,
+                      width: `${8 + Math.random() * 8}px`,
+                      height: `${8 + Math.random() * 8}px`,
                       backgroundColor: colors[Math.floor(Math.random() * colors.length)],
-                      borderRadius: Math.random() > 0.5 ? '50%' : '2px'
+                      borderRadius: Math.random() > 0.5 ? '50%' : '3px'
                     }}
                   />
                 )}
@@ -253,10 +209,16 @@ export default function UploadPage() {
             )
           })}
           <div className="absolute inset-0 flex items-center justify-center">
-            <div className="bg-white/95 backdrop-blur-sm rounded-2xl px-6 py-4 shadow-lg border border-gray-200 text-center animate-bounce">
-              <div className="text-2xl mb-1">✅</div>
-              <h3 className="text-lg font-medium text-gray-800">Uploaded!</h3>
-              <p className="text-xs text-gray-500 mt-1">Check preview page</p>
+            <div className="bg-white/95 backdrop-blur-sm rounded-2xl px-8 py-6 shadow-xl border border-gray-200 text-center animate-bounce">
+              <div className="text-4xl mb-2">📸🎉</div>
+              <h3 className="text-xl font-semibold text-gray-800 mb-2">Photos Uploaded!</h3>
+              <p className="text-sm text-gray-600 mb-4">Your memories are safely stored</p>
+              <button
+                onClick={uploadMore}
+                className="bg-gray-900 text-white px-6 py-2 rounded-xl text-sm font-medium hover:bg-gray-800 transition-colors pointer-events-auto"
+              >
+                Upload More Photos
+              </button>
             </div>
           </div>
         </div>
@@ -379,15 +341,17 @@ export default function UploadPage() {
                           </svg>
                         </div>
                       )}
-                      <button
-                        type="button"
-                        onClick={() => removeFile(file.id)}
-                        className="absolute -top-1 -right-1 bg-gray-800 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
+                      {file.status === 'error' && (
+                        <button
+                          type="button"
+                          onClick={() => removeFile(file.id)}
+                          className="absolute -top-1 -right-1 bg-red-600 text-white rounded-full p-1 shadow-lg hover:bg-red-700 transition-colors"
+                        >
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>

@@ -56,7 +56,7 @@ export default function PreviewPage() {
     })
   }
 
-  // Batch preload images to avoid overwhelming the browser
+  // Batch preload images to avoid overwhelming the browser (for initial load)
   const preloadImagesInBatch = async (photos: Photo[], batchSize: number = 3) => {
     for (let i = 0; i < photos.length; i += batchSize) {
       const batch = photos.slice(i, i + batchSize)
@@ -123,10 +123,6 @@ export default function PreviewPage() {
           if (message.type === 'totalCount') {
             console.log('Updating total count:', message.count)
             setTotalCount(message.count)
-          } else if (message.type === 'initialPhotos') {
-            console.log('Loading initial photos batch:', message.photos.length)
-            // Use batch preloading for initial photos
-            preloadImagesInBatch(message.photos)
           } else if (message.type === 'photo') {
             console.log('Adding new photo:', message.id)
             const newPhoto: Photo = {
@@ -149,14 +145,30 @@ export default function PreviewPage() {
                 return prev
               }
 
-              // This is a truly new photo, preload and add with animation
-              console.log('Adding new photo:', newPhoto.id)
-              preloadImage(newPhoto, true).then(loadedPhoto => {
+              // Determine if this is initial load (empty photos array) or truly new photo
+              const isInitialLoad = prev.length === 0
+              const shouldAnimate = !isInitialLoad // Only animate if not initial load
+
+              console.log(`${isInitialLoad ? 'Initial load' : 'New'} photo:`, newPhoto.id)
+              preloadImage(newPhoto, shouldAnimate).then(loadedPhoto => {
                 setPhotos(current => {
                   const filtered = current.filter(p => p.id !== loadedPhoto.id)
                   const updated = [loadedPhoto, ...filtered]
                   return updated.slice(0, 15)
                 })
+
+                // Only reset isNewlyAdded for animated photos
+                if (shouldAnimate) {
+                  setTimeout(() => {
+                    setPhotos(current =>
+                      current.map(p =>
+                        p.id === loadedPhoto.id
+                          ? { ...p, isNewlyAdded: false }
+                          : p
+                      )
+                    )
+                  }, 3000)
+                }
               })
               return prev
             })
@@ -172,6 +184,17 @@ export default function PreviewPage() {
 
               preloadImage(newPhoto, true).then(loadedPhoto => {
                 setPhotos(current => [loadedPhoto, ...current.filter(p => p.id !== loadedPhoto.id)].slice(0, 15))
+
+                // After animation finishes (3 seconds), reset isNewlyAdded to false
+                setTimeout(() => {
+                  setPhotos(current =>
+                    current.map(p =>
+                      p.id === loadedPhoto.id
+                        ? { ...p, isNewlyAdded: false }
+                        : p
+                    )
+                  )
+                }, 3000)
               })
               return prev
             })
@@ -299,7 +322,7 @@ export default function PreviewPage() {
                     left: '50%',
                     top: '50%',
                     transform: `translate(calc(-50% + ${position.x}%), calc(-50% + ${position.y}%)) rotate(${tilt}deg)`,
-                    zIndex: photo.isNewlyAdded ? 1000 : 100 - index,
+                    zIndex: photo.isNewlyAdded ? 1000 : 500 - index, // Higher base z-index so newer photos are always on top
                     transition: photo.isNewlyAdded ? 'none' : 'transform 0.8s ease-out',
                     opacity: photo.imageLoaded ? 1 : 0, // Hide until loaded
                   }}

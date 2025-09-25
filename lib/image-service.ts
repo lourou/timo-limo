@@ -35,12 +35,21 @@ async function uploadToCloudflareImagesService(file: File, photoId: string): Pro
   const apiToken = process.env.CLOUDFLARE_IMAGES_API_TOKEN
   const accountHash = process.env.CLOUDFLARE_IMAGES_HASH
 
+  console.log('Cloudflare Images config:', {
+    accountId: accountId ? 'set' : 'missing',
+    apiToken: apiToken ? 'set' : 'missing',
+    accountHash: accountHash ? 'set' : 'missing',
+    photoId,
+    fileType: file.type,
+    fileSize: file.size
+  })
+
   if (!accountId || !apiToken) {
     throw new Error('Cloudflare Images credentials not configured')
   }
 
-  // Use the photo ID as the custom ID to prevent duplicates
-  const result = await uploadToCloudflareImages(file, accountId, apiToken, photoId)
+  // Don't use custom ID since Cloudflare Images doesn't allow UUIDs
+  const result = await uploadToCloudflareImages(file, accountId, apiToken)
 
   return {
     original: getImageUrl(result.id, IMAGE_VARIANTS.public, accountHash), // Public variant (original size, publicly accessible)

@@ -42,7 +42,13 @@ export async function uploadToCloudflareImages(
   )
 
   if (!response.ok) {
-    throw new Error(`Failed to upload to Cloudflare Images: ${response.statusText}`)
+    const errorBody = await response.text()
+    console.error('Cloudflare Images API error details:', {
+      status: response.status,
+      statusText: response.statusText,
+      body: errorBody
+    })
+    throw new Error(`Failed to upload to Cloudflare Images: ${response.statusText} - ${errorBody}`)
   }
 
   const result = await response.json() as CloudflareImagesResponse

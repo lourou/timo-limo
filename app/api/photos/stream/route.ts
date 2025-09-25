@@ -19,10 +19,10 @@ export async function GET(request: NextRequest) {
         const countData = `data: ${JSON.stringify({ type: 'totalCount', count: totalCount })}\n\n`
         controller.enqueue(encoder.encode(countData))
 
-        // Send all recent photos as a batch for efficient loading
-        if (recentPhotos.length > 0) {
-          const photosData = `data: ${JSON.stringify({ type: 'initialPhotos', photos: recentPhotos.reverse() })}\n\n`
-          controller.enqueue(encoder.encode(photosData))
+        // Send recent photos individually to maintain animation system
+        for (const photo of recentPhotos.reverse()) {
+          const photoData = `data: ${JSON.stringify({ type: 'photo', ...photo })}\n\n`
+          controller.enqueue(encoder.encode(photoData))
         }
       } catch (error) {
         console.error('Database error in SSE:', error)
