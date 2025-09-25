@@ -103,7 +103,20 @@ export default function PreviewPage() {
 
     connectSSE()
 
+    // Periodic reconnection to ensure fresh data
+    const reconnectInterval = setInterval(() => {
+      if (eventSourceRef.current?.readyState === EventSource.CLOSED) {
+        console.log('Reconnecting closed SSE connection...')
+        connectSSE()
+      } else {
+        console.log('SSE connection is active, refreshing...')
+        eventSourceRef.current?.close()
+        setTimeout(connectSSE, 100)
+      }
+    }, 5000) // Reconnect every 5 seconds for real-time updates
+
     return () => {
+      clearInterval(reconnectInterval)
       eventSourceRef.current?.close()
     }
   }, [])
