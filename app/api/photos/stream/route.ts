@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { addSSEClient, removeSSEClient } from '@/lib/sse'
-import { getRecentPhotos } from '@/lib/db-d1'
+import { getRecentPhotos, getTotalPhotoCount } from '@/lib/db-d1'
 
 export const runtime = 'edge'
 
@@ -13,14 +13,21 @@ export async function GET(request: NextRequest) {
 
       try {
         const recentPhotos = await getRecentPhotos(10)
+        const totalCount = await getTotalPhotoCount()
+
+        // Send total count first
+        const countData = `data: ${JSON.stringify({ type: 'totalCount', count: totalCount })}\n\n`
+        controller.enqueue(encoder.encode(countData))
+
+        // Then send recent photos
         for (const photo of recentPhotos.reverse()) {
-          const data = `data: ${JSON.stringify(photo)}\n\n`
-          controller.enqueue(encoder.encode(data))
+          const photoData = `data: ${JSON.stringify({ type: 'photo', ...photo })}\n\n`
+          controller.enqueue(encoder.encode(photoData))
         }
       } catch (error) {
         console.error('Database error in SSE:', error)
         // Send empty response if database not available
-        controller.enqueue(encoder.encode('data: []\n\n'))
+        controller.enqueue(encoder.encode('data: {"type": "error"}\n\n'))
       }
 
       const keepAlive = setInterval(() => {

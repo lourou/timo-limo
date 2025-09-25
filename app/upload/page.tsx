@@ -18,6 +18,7 @@ export default function UploadPage() {
   const [comment, setComment] = useState('')
   const [isUploading, setIsUploading] = useState(false)
   const [batchId, setBatchId] = useState(uuidv4())
+  const [showConfetti, setShowConfetti] = useState(false)
 
   useEffect(() => {
     const savedName = Cookies.get('uploaderName')
@@ -29,7 +30,17 @@ export default function UploadPage() {
   const handleFileSelect = (e: ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return
 
-    const newFiles = Array.from(e.target.files).map(file => ({
+    const selectedFiles = Array.from(e.target.files)
+    const currentFileCount = files.length
+    const maxFiles = 6
+
+    // Check if adding these files would exceed the limit
+    if (currentFileCount + selectedFiles.length > maxFiles) {
+      alert(`Maximum ${maxFiles} files allowed. You can select ${maxFiles - currentFileCount} more.`)
+      return
+    }
+
+    const newFiles = selectedFiles.map(file => ({
       id: uuidv4(),
       file,
       preview: '', // Start with empty preview
@@ -39,16 +50,22 @@ export default function UploadPage() {
 
     setFiles(prev => [...prev, ...newFiles])
 
-    // Generate previews progressively to avoid UI freezing
-    newFiles.forEach((fileInfo, index) => {
-      setTimeout(() => {
-        setFiles(prev => prev.map(f =>
-          f.id === fileInfo.id
-            ? { ...f, preview: URL.createObjectURL(fileInfo.file) }
-            : f
-        ))
-      }, index * 50) // Stagger preview generation by 50ms each
-    })
+    // Generate previews with requestAnimationFrame to avoid UI freezing
+    const generatePreviewsAsync = async () => {
+      for (let i = 0; i < newFiles.length; i++) {
+        await new Promise(resolve => {
+          requestAnimationFrame(() => {
+            setFiles(prev => prev.map(f =>
+              f.id === newFiles[i].id
+                ? { ...f, preview: URL.createObjectURL(newFiles[i].file) }
+                : f
+            ))
+            setTimeout(resolve, 16) // ~60fps timing
+          })
+        })
+      }
+    }
+    generatePreviewsAsync()
   }
 
   const handleSubmit = async (e: FormEvent) => {
@@ -114,7 +131,10 @@ export default function UploadPage() {
         setFiles([])
         setComment('')
         setBatchId(uuidv4()) // Reset batch ID for next upload
-        alert('All photos uploaded successfully!')
+        setShowConfetti(true)
+
+        // Hide confetti after 3 seconds
+        setTimeout(() => setShowConfetti(false), 3000)
       }, 1500)
     } catch (error) {
       console.error('Batch creation error:', error)
@@ -134,45 +154,46 @@ export default function UploadPage() {
   }
 
   return (
-    <div className="min-h-screen p-4 md:p-8">
-      <div className="max-w-2xl mx-auto">
-        <h1 className="text-3xl font-bold text-gray-800 mb-8 text-center">
-          Share Your Photos
+    <div className="min-h-screen bg-gray-50 p-4 relative">
+      {/* Confetti Animation */}
+      {showConfetti && (
+        <div className="fixed inset-0 pointer-events-none z-50 overflow-hidden">
+          {Array.from({ length: 50 }).map((_, i) => (
+            <div
+              key={i}
+              className="absolute animate-confetti"
+              style={{
+                left: `${Math.random() * 100}%`,
+                animationDelay: `${Math.random() * 3}s`,
+                animationDuration: `${3 + Math.random() * 2}s`
+              }}
+            >
+              <div
+                className="w-2 h-2 rounded"
+                style={{
+                  backgroundColor: ['#ff6b9d', '#45b7d1', '#96ceb4', '#feca57', '#ff9ff3', '#54a0ff'][Math.floor(Math.random() * 6)]
+                }}
+              />
+            </div>
+          ))}
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="bg-white rounded-2xl px-8 py-6 shadow-2xl text-center animate-bounce">
+              <div className="text-4xl mb-2">🎉</div>
+              <h3 className="text-xl font-semibold text-gray-800">Photos uploaded!</h3>
+              <p className="text-gray-600 mt-1">Check the preview page</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="max-w-lg mx-auto pt-8">
+        <h1 className="text-2xl font-light text-gray-900 mb-8 text-center">
+          Jean Cadre 📸
         </h1>
 
         <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="bg-white rounded-xl shadow-lg p-6">
-            <label className="block mb-2 text-sm font-medium text-gray-700">
-              Your Name
-            </label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="Enter your name"
-              required
-            />
-          </div>
-
-          <div className="bg-white rounded-xl shadow-lg p-6">
-            <label className="block mb-2 text-sm font-medium text-gray-700">
-              Comment (Optional)
-            </label>
-            <textarea
-              value={comment}
-              onChange={(e) => setComment(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              rows={3}
-              placeholder="Add a message or description..."
-            />
-          </div>
-
-          <div className="bg-white rounded-xl shadow-lg p-6">
-            <label className="block mb-4 text-sm font-medium text-gray-700">
-              Select Photos
-            </label>
-            
+          {/* Photo selection first */}
+          <div className="bg-white rounded-2xl border border-gray-200 p-6">
             <input
               type="file"
               multiple
@@ -180,29 +201,45 @@ export default function UploadPage() {
               onChange={handleFileSelect}
               className="hidden"
               id="file-upload"
-              disabled={isUploading}
+              disabled={isUploading || files.length >= 6}
             />
-            
+
             <label
               htmlFor="file-upload"
-              className="upload-button inline-block cursor-pointer"
+              className={`w-full h-32 border-2 border-dashed rounded-xl flex items-center justify-center transition-colors ${
+                files.length >= 6
+                  ? 'border-gray-200 bg-gray-50 cursor-not-allowed'
+                  : 'border-gray-300 cursor-pointer hover:border-gray-400 hover:bg-gray-50'
+              }`}
             >
-              Choose Photos
+              <div className="text-center">
+                <svg className="mx-auto h-8 w-8 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v16m8-8H4" />
+                </svg>
+                <p className="text-sm text-gray-600">
+                  {files.length >= 6 ? 'Maximum 6 photos' : 'Choose photos'}
+                </p>
+                <p className="text-xs text-gray-400 mt-1">
+                  {files.length >= 6 ? 'Remove some to add more' : `${files.length}/6 selected`}
+                </p>
+              </div>
             </label>
 
             {files.length > 0 && (
-              <div className="mt-6 grid grid-cols-2 md:grid-cols-3 gap-4">
+              <div className="mt-4 grid grid-cols-3 gap-2">
                 {files.map(file => (
                   <div key={file.id} className="relative group">
                     {file.preview ? (
                       <img
                         src={file.preview}
                         alt="Preview"
-                        className="w-full h-32 object-cover rounded-lg"
+                        className="w-full h-20 object-cover rounded-lg"
                       />
                     ) : (
-                      <div className="w-full h-32 bg-gray-200 rounded-lg flex items-center justify-center">
-                        <div className="text-gray-400 text-sm">Loading preview...</div>
+                      <div className="w-full h-20 bg-gray-100 rounded-lg flex items-center justify-center animate-pulse">
+                        <svg className="w-6 h-6 text-gray-300" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clipRule="evenodd" />
+                        </svg>
                       </div>
                     )}
                     {file.status === 'uploading' && (
@@ -221,9 +258,9 @@ export default function UploadPage() {
                       <button
                         type="button"
                         onClick={() => removeFile(file.id)}
-                        className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="absolute -top-1 -right-1 bg-gray-800 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
                       >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                         </svg>
                       </button>
@@ -234,10 +271,29 @@ export default function UploadPage() {
             )}
           </div>
 
+          {/* Name and comment fields - minimal design */}
+          <div className="bg-white rounded-2xl border border-gray-200 p-6 space-y-4">
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full px-0 py-2 border-0 border-b border-gray-200 bg-transparent focus:border-gray-400 focus:ring-0 placeholder-gray-400"
+              placeholder="Your name"
+              required
+            />
+            <textarea
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              className="w-full px-0 py-2 border-0 border-b border-gray-200 bg-transparent focus:border-gray-400 focus:ring-0 placeholder-gray-400 resize-none"
+              rows={2}
+              placeholder="Add a comment (optional)"
+            />
+          </div>
+
           <button
             type="submit"
             disabled={isUploading || files.length === 0}
-            className="w-full upload-button disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full bg-gray-900 text-white py-3 rounded-2xl font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-800 transition-colors"
           >
             {isUploading ? 'Uploading...' : `Upload ${files.length} Photo${files.length !== 1 ? 's' : ''}`}
           </button>

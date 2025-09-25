@@ -112,6 +112,16 @@ export async function getRecentPhotos(limit: number = 50): Promise<Photo[]> {
   return results.results as unknown as Photo[]
 }
 
+export async function getTotalPhotoCount(): Promise<number> {
+  const DB = getDB()
+  const result = await DB.prepare(`
+    SELECT COUNT(*) as count
+    FROM photos
+  `).first()
+
+  return (result as any)?.count || 0
+}
+
 export async function getBatchPhotos(batchId: string): Promise<Photo[]> {
   const DB = getDB()
   const results = await DB.prepare(`

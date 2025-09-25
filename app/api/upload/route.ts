@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { uploadToR2, getPublicUrl } from '@/lib/r2'
+import { uploadImage } from '@/lib/image-service'
 import { addPhoto, getBatch, Photo } from '@/lib/db-d1'
-// Note: Image processing moved to client-side or removed for Edge Runtime compatibility
 import { broadcastPhoto } from '@/lib/sse'
 import { v4 as uuidv4 } from 'uuid'
 
@@ -47,24 +46,18 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const buffer = Buffer.from(await file.arrayBuffer())
     const photoId = fileId || uuidv4()
     const timestamp = Date.now()
 
-    // Upload original file directly (image optimization handled by Cloudflare)
-    const originalKey = `photos/${batchId}/${photoId}.${file.name.split('.').pop()}`
-    const thumbnailKey = `thumbnails/${batchId}/${photoId}.${file.name.split('.').pop()}`
+    // Upload using the image service (supports both R2 and Cloudflare Images)
+    const imageKey = `photos/${batchId}/${photoId}`
+    console.log(`Uploading image with key: ${imageKey}`)
 
-    // Upload original file
-    console.log(`Uploading to R2 - Original: ${originalKey}`)
-    await uploadToR2(originalKey, buffer, file.type)
+    const { original: originalUrl, thumbnail: thumbnailUrl } = await uploadImage(file, imageKey, {
+      service: process.env.CLOUDFLARE_IMAGES_API_TOKEN ? 'cloudflare-images' : 'r2',
+      generateThumbnail: true
+    })
 
-    // For now, use same file for thumbnail (can be optimized later with Cloudflare Images)
-    console.log(`Uploading to R2 - Thumbnail: ${thumbnailKey}`)
-    await uploadToR2(thumbnailKey, buffer, file.type)
-
-    const originalUrl = getPublicUrl(originalKey)
-    const thumbnailUrl = getPublicUrl(thumbnailKey)
     console.log(`Generated URLs - Original: ${originalUrl}, Thumbnail: ${thumbnailUrl}`)
 
     const photo: Photo = {
@@ -82,7 +75,7 @@ export async function POST(request: NextRequest) {
     await addPhoto(photo)
     console.log('Photo added to database successfully')
 
-    broadcastPhoto(photo)
+    await broadcastPhoto(photo)
 
     return NextResponse.json({
       success: true,

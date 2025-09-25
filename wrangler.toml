@@ -14,9 +14,11 @@ database_id = "59137a04-665c-4f09-a0e6-3bb456994a72"
 binding = "R2"
 bucket_name = "timo-limo-2025-09"
 
+
 # Environment Variables
 [vars]
 NEXT_PUBLIC_APP_URL = "https://timo.limo"
 MAX_FILE_SIZE = "52428800"
 ALLOWED_ORIGINS = "https://timo.limo"
 R2_PUBLIC_URL = "https://assets.timo.limo"
+# Cloudflare Images - configured via environment variables (not committed)

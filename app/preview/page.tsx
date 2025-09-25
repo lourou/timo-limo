@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react'
 import QRCode from 'qrcode'
+import { getResizedImageUrl } from '@/lib/image-service'
 
 interface Photo {
   id: string
@@ -16,7 +17,9 @@ interface Photo {
 
 export default function PreviewPage() {
   const [photos, setPhotos] = useState<Photo[]>([])
+  const [totalCount, setTotalCount] = useState(0)
   const [qrCodeUrl, setQrCodeUrl] = useState('')
+  const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'error'>('connecting')
   const eventSourceRef = useRef<EventSource | null>(null)
 
   useEffect(() => {
@@ -31,24 +34,70 @@ export default function PreviewPage() {
     }).then(setQrCodeUrl)
 
     const connectSSE = () => {
+      console.log('Connecting to SSE stream...')
+      setConnectionStatus('connecting')
       eventSourceRef.current = new EventSource('/api/photos/stream')
-      
+
+      eventSourceRef.current.onopen = () => {
+        console.log('SSE connection opened')
+        setConnectionStatus('connected')
+      }
+
       eventSourceRef.current.onmessage = (event) => {
         try {
-          const newPhoto: Photo = JSON.parse(event.data)
-          setPhotos(prev => {
-            // Keep only the most recent 10 photos, with newest first
-            const updated = [newPhoto, ...prev.filter(p => p.id !== newPhoto.id)]
-            return updated.slice(0, 10)
-          })
+          console.log('SSE message received:', event.data)
+
+          // Skip keep-alive messages
+          if (event.data.trim() === '' || event.data.startsWith(':')) {
+            return
+          }
+
+          const message = JSON.parse(event.data)
+          console.log('Parsed message:', message)
+
+          if (message.type === 'totalCount') {
+            console.log('Updating total count:', message.count)
+            setTotalCount(message.count)
+          } else if (message.type === 'photo') {
+            console.log('Adding new photo:', message.id)
+            const newPhoto: Photo = {
+              id: message.id,
+              originalUrl: message.originalUrl,
+              thumbnailUrl: message.thumbnailUrl,
+              uploaderName: message.uploaderName,
+              comment: message.comment,
+              uploadedAt: message.uploadedAt,
+              batchId: message.batchId,
+              order: message.order
+            }
+
+            setPhotos(prev => {
+              console.log('Current photos count:', prev.length)
+              // New photo goes on top (index 0), existing photos shift down
+              const filtered = prev.filter(p => p.id !== newPhoto.id)
+              const updated = [newPhoto, ...filtered]
+              console.log('Updated photos count:', updated.length)
+              return updated.slice(0, 10)
+            })
+          } else {
+            // Handle old format for backwards compatibility
+            const newPhoto: Photo = message
+            console.log('Legacy photo format:', newPhoto)
+            setPhotos(prev => [newPhoto, ...prev.filter(p => p.id !== newPhoto.id)].slice(0, 10))
+          }
         } catch (error) {
-          console.error('Error parsing SSE message:', error)
+          console.error('Error parsing SSE message:', error, 'Data:', event.data)
         }
       }
 
-      eventSourceRef.current.onerror = () => {
+      eventSourceRef.current.onerror = (error) => {
+        console.error('SSE error:', error)
+        setConnectionStatus('error')
         eventSourceRef.current?.close()
-        setTimeout(connectSSE, 5000)
+        setTimeout(() => {
+          console.log('Reconnecting SSE in 5 seconds...')
+          connectSSE()
+        }, 5000)
       }
     }
 
@@ -59,18 +108,35 @@ export default function PreviewPage() {
     }
   }, [])
 
-  const getRandomRotation = () => {
-    const rotations = ['-rotate-1', '-rotate-2', 'rotate-1', 'rotate-2', '-rotate-3', 'rotate-3']
-    return rotations[Math.floor(Math.random() * rotations.length)]
+  // Generate random tilt for each photo (consistent per photo ID)
+  const getRandomTilt = (photoId: string) => {
+    const tilts = [-8, -6, -4, -2, -1, 0, 1, 2, 4, 6, 8, 12, -12, 15, -15]
+    const hash = photoId.split('').reduce((a, b) => a + b.charCodeAt(0), 0)
+    return tilts[hash % tilts.length]
   }
 
-  const getRandomPosition = (index: number) => {
-    const spread = 150
-    const baseX = (index % 3) * 20 - 20
-    const baseY = Math.floor(index / 3) * 10
-    const randomX = baseX + (Math.random() - 0.5) * spread
-    const randomY = baseY + (Math.random() - 0.5) * 50
-    return { x: randomX, y: randomY }
+  const getRandomPosition = (index: number, photoId: string) => {
+    const hash = photoId.split('').reduce((a, b) => a + b.charCodeAt(0), 0)
+
+    // Create a grid-based layout with random offsets
+    const cols = 4
+    const rows = Math.ceil(10 / cols)
+
+    const col = index % cols
+    const row = Math.floor(index / cols)
+
+    // Base positions in a grid
+    const baseX = (col / (cols - 1)) * 80 - 40 // -40% to +40%
+    const baseY = (row / (rows - 1)) * 60 - 30 // -30% to +30%
+
+    // Add randomness based on photo ID for consistent positioning
+    const randomX = baseX + ((hash % 40) - 20) // ±20% additional offset
+    const randomY = baseY + (((hash * 7) % 30) - 15) // ±15% additional offset
+
+    return {
+      x: Math.max(-45, Math.min(45, randomX)), // Keep within bounds
+      y: Math.max(-35, Math.min(35, randomY))
+    }
   }
 
   return (
@@ -86,11 +152,21 @@ export default function PreviewPage() {
 
       <div className="fixed top-4 left-4 z-40">
         <h1 className="text-4xl font-bold text-gray-800">
-          Photo Stream
+          Jean Cadre 📸
         </h1>
-        <p className="text-gray-600 mt-2">
-          {photos.length} photo{photos.length !== 1 ? 's' : ''} shared
-        </p>
+        <div className="flex items-center gap-3 mt-2">
+          <p className="text-gray-600">
+            {totalCount > 0
+              ? `${totalCount} photo${totalCount !== 1 ? 's' : ''} shared${photos.length < totalCount ? ` (showing ${photos.length})` : ''}`
+              : `${photos.length} photo${photos.length !== 1 ? 's' : ''} shared`
+            }
+          </p>
+          <div className={`w-2 h-2 rounded-full ${
+            connectionStatus === 'connected' ? 'bg-green-500' :
+            connectionStatus === 'connecting' ? 'bg-yellow-500 animate-pulse' :
+            'bg-red-500'
+          }`} title={`Connection ${connectionStatus}`} />
+        </div>
       </div>
 
       {photos.length === 0 ? (
@@ -109,24 +185,25 @@ export default function PreviewPage() {
         <div className="relative w-full h-screen flex items-center justify-center pt-20">
           <div className="relative w-full max-w-6xl h-full">
             {photos.map((photo, index) => {
-              const position = getRandomPosition(index)
-              const rotation = getRandomRotation()
-              
+              const position = getRandomPosition(index, photo.id)
+              const tilt = getRandomTilt(photo.id)
+
               return (
                 <div
                   key={photo.id}
-                  className={`absolute photo-card ${rotation} animate-photo-drop`}
+                  className={`absolute photo-card ${index === 0 ? 'animate-photo-fly-in' : 'animate-photo-drop'}`}
                   style={{
                     left: '50%',
-                    top: '40%',
-                    transform: `translate(calc(-50% + ${position.x}px), calc(-50% + ${position.y}px))`,
-                    zIndex: photos.length - index,
-                    animationDelay: `${index * 0.1}s`,
+                    top: '50%',
+                    transform: `translate(calc(-50% + ${position.x}%), calc(-50% + ${position.y}%)) rotate(${tilt}deg)`,
+                    zIndex: 100 - index, // New photos (index 0) have highest z-index
+                    animationDelay: index === 0 ? '0s' : `${index * 0.1}s`,
+                    transition: 'transform 0.8s ease-out',
                   }}
                 >
                   <div className="relative">
                     <img
-                      src={photo.thumbnailUrl}
+                      src={getResizedImageUrl(photo.thumbnailUrl, 400, 400, 85)}
                       alt="Uploaded photo"
                       className="max-w-sm w-full h-auto rounded-lg"
                       style={{ maxHeight: '400px', objectFit: 'cover' }}
