@@ -26,8 +26,6 @@ export default function PreviewPage() {
   const [qrCodeUrl, setQrCodeUrl] = useState('')
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'error'>('connecting')
   const eventSourceRef = useRef<EventSource | null>(null)
-  const photoQueue = useRef<Photo[]>([])
-  const processingQueue = useRef(false)
 
 
   // Preload image and update state when loaded - optimized version
@@ -89,59 +87,6 @@ export default function PreviewPage() {
     }
   }
 
-  // Process photo queue to avoid race conditions with simultaneous uploads
-  const processPhotoQueue = async () => {
-    if (processingQueue.current || photoQueue.current.length === 0) return
-
-    processingQueue.current = true
-
-    while (photoQueue.current.length > 0) {
-      const photo = photoQueue.current.shift()!
-
-      // Check if photo already exists
-      const exists = photos.find(p => p.id === photo.id)
-      if (exists) {
-        console.log('Photo already exists in queue processing:', photo.id)
-        continue
-      }
-
-      // Determine if this should animate (only if we already have photos)
-      const shouldAnimate = photos.length > 0
-
-      console.log(`Processing queued photo (${shouldAnimate ? 'animated' : 'static'}):`, photo.id)
-
-      await new Promise<void>((resolve) => {
-        preloadImage(photo, shouldAnimate).then(loadedPhoto => {
-          setPhotos(current => {
-            const filtered = current.filter(p => p.id !== loadedPhoto.id)
-            const updated = [loadedPhoto, ...filtered]
-            return updated.slice(0, 15)
-          })
-
-          if (shouldAnimate) {
-            setTimeout(() => {
-              setPhotos(current =>
-                current.map(p =>
-                  p.id === loadedPhoto.id
-                    ? { ...p, isNewlyAdded: false }
-                    : p
-                )
-              )
-            }, 3000)
-          }
-
-          resolve()
-        })
-      })
-
-      // Small delay between processing photos to ensure proper staggered animation
-      if (photoQueue.current.length > 0) {
-        await new Promise(resolve => setTimeout(resolve, 500))
-      }
-    }
-
-    processingQueue.current = false
-  }
 
   useEffect(() => {
     const uploadUrl = `${window.location.origin}/upload`
@@ -192,16 +137,42 @@ export default function PreviewPage() {
               order: message.order
             }
 
-            // Check if photo already exists
-            const existingPhoto = photos.find(p => p.id === newPhoto.id)
-            if (existingPhoto) {
-              console.log('Photo already exists, skipping:', newPhoto.id)
-              return
-            }
+            // Check if this photo is actually new or from reconnection
+            setPhotos(prev => {
+              const existingPhoto = prev.find(p => p.id === newPhoto.id)
+              if (existingPhoto) {
+                // Photo already exists, don't add it again or trigger animation
+                console.log('Photo already exists, skipping:', newPhoto.id)
+                return prev
+              }
 
-            // Add to queue for sequential processing
-            photoQueue.current.push(newPhoto)
-            processPhotoQueue()
+              // Determine if this is initial load (empty photos array) or truly new photo
+              const isInitialLoad = prev.length === 0
+              const shouldAnimate = !isInitialLoad // Only animate if not initial load
+
+              console.log(`${isInitialLoad ? 'Initial load' : 'New'} photo:`, newPhoto.id)
+              preloadImage(newPhoto, shouldAnimate).then(loadedPhoto => {
+                setPhotos(current => {
+                  const filtered = current.filter(p => p.id !== loadedPhoto.id)
+                  const updated = [loadedPhoto, ...filtered]
+                  return updated.slice(0, 15)
+                })
+
+                // Only reset isNewlyAdded for animated photos
+                if (shouldAnimate) {
+                  setTimeout(() => {
+                    setPhotos(current =>
+                      current.map(p =>
+                        p.id === loadedPhoto.id
+                          ? { ...p, isNewlyAdded: false }
+                          : p
+                      )
+                    )
+                  }, 3000)
+                }
+              })
+              return prev
+            })
           } else {
             // Handle old format for backwards compatibility
             const newPhoto: Photo = message
@@ -279,13 +250,16 @@ export default function PreviewPage() {
     const hash2 = parts[1] ? parseInt(parts[1].slice(0, 4), 16) : 0
     const hash3 = parts[2] ? parseInt(parts[2].slice(0, 4), 16) : 0
 
-    // Use different parts of UUID for X and Y to ensure good distribution
-    const randomX = ((hash1 % 140) - 70) // -70% to +70% (wider spread)
-    const randomY = ((hash2 % 100) - 50) // -50% to +50%
+    // Add timestamp factor for photos arriving at the same time (but keep it deterministic per photo)
+    const timeHash = parseInt(photoId.slice(-8), 16) || Date.now()
 
-    // Add some variation using the third hash
-    const variationX = ((hash3 % 20) - 10) // Additional -10% to +10%
-    const variationY = (((hash1 + hash2) % 20) - 10) // Additional -10% to +10%
+    // Use different parts of UUID for X and Y to ensure good distribution
+    const randomX = ((hash1 + timeHash) % 140) - 70 // -70% to +70% (wider spread)
+    const randomY = ((hash2 + timeHash * 3) % 100) - 50 // -50% to +50%
+
+    // Add more variation using the third hash and time
+    const variationX = ((hash3 + timeHash * 7) % 30) - 15 // Additional -15% to +15%
+    const variationY = (((hash1 + hash2 + timeHash * 13) % 30) - 15) // Additional -15% to +15%
 
     return {
       x: Math.max(-75, Math.min(75, randomX + variationX)), // Keep within bounds
