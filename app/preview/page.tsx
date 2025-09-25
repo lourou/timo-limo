@@ -15,12 +15,32 @@ interface Photo {
   order: number
 }
 
+interface PhotoState extends Photo {
+  imageLoaded: boolean
+  isNewlyAdded: boolean
+}
+
 export default function PreviewPage() {
-  const [photos, setPhotos] = useState<Photo[]>([])
+  const [photos, setPhotos] = useState<PhotoState[]>([])
   const [totalCount, setTotalCount] = useState(0)
   const [qrCodeUrl, setQrCodeUrl] = useState('')
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'error'>('connecting')
   const eventSourceRef = useRef<EventSource | null>(null)
+
+  // Preload image and update state when loaded
+  const preloadImage = (photo: Photo, isNewlyAdded: boolean = false): Promise<PhotoState> => {
+    return new Promise((resolve) => {
+      const img = new Image()
+      img.onload = () => {
+        resolve({ ...photo, imageLoaded: true, isNewlyAdded })
+      }
+      img.onerror = () => {
+        // Still resolve even on error to prevent hanging
+        resolve({ ...photo, imageLoaded: true, isNewlyAdded })
+      }
+      img.src = getResizedImageUrl(photo.thumbnailUrl, 300, 300, 70)
+    })
+  }
 
   useEffect(() => {
     const uploadUrl = `${window.location.origin}/upload`
@@ -71,19 +91,41 @@ export default function PreviewPage() {
               order: message.order
             }
 
+            // Check if this photo is actually new or from reconnection
             setPhotos(prev => {
-              console.log('Current photos count:', prev.length)
-              // New photo goes on top (index 0), existing photos shift down
-              const filtered = prev.filter(p => p.id !== newPhoto.id)
-              const updated = [newPhoto, ...filtered]
-              console.log('Updated photos count:', updated.length)
-              return updated.slice(0, 10)
+              const existingPhoto = prev.find(p => p.id === newPhoto.id)
+              if (existingPhoto) {
+                // Photo already exists, don't add it again or trigger animation
+                console.log('Photo already exists, skipping:', newPhoto.id)
+                return prev
+              }
+
+              // This is a truly new photo, preload and add with animation
+              console.log('Adding new photo:', newPhoto.id)
+              preloadImage(newPhoto, true).then(loadedPhoto => {
+                setPhotos(current => {
+                  const filtered = current.filter(p => p.id !== loadedPhoto.id)
+                  const updated = [loadedPhoto, ...filtered]
+                  return updated.slice(0, 15)
+                })
+              })
+              return prev
             })
           } else {
             // Handle old format for backwards compatibility
             const newPhoto: Photo = message
             console.log('Legacy photo format:', newPhoto)
-            setPhotos(prev => [newPhoto, ...prev.filter(p => p.id !== newPhoto.id)].slice(0, 10))
+            setPhotos(prev => {
+              const existingPhoto = prev.find(p => p.id === newPhoto.id)
+              if (existingPhoto) {
+                return prev // Don't re-add existing photos
+              }
+
+              preloadImage(newPhoto, true).then(loadedPhoto => {
+                setPhotos(current => [loadedPhoto, ...current.filter(p => p.id !== loadedPhoto.id)].slice(0, 15))
+              })
+              return prev
+            })
           }
         } catch (error) {
           console.error('Error parsing SSE message:', error, 'Data:', event.data)
@@ -128,57 +170,55 @@ export default function PreviewPage() {
     return tilts[hash % tilts.length]
   }
 
-  const getRandomPosition = (index: number, photoId: string) => {
+  const getRandomPosition = (photoId: string) => {
     const hash = photoId.split('').reduce((a, b) => a + b.charCodeAt(0), 0)
 
-    // Create a grid-based layout with random offsets
-    const cols = 4
-    const rows = Math.ceil(10 / cols)
-
-    const col = index % cols
-    const row = Math.floor(index / cols)
-
-    // Base positions in a grid
-    const baseX = (col / (cols - 1)) * 80 - 40 // -40% to +40%
-    const baseY = (row / (rows - 1)) * 60 - 30 // -30% to +30%
-
-    // Add randomness based on photo ID for consistent positioning
-    const randomX = baseX + ((hash % 40) - 20) // ±20% additional offset
-    const randomY = baseY + (((hash * 7) % 30) - 15) // ±15% additional offset
+    // Position based ONLY on photo ID, not index, so photos stay in same place
+    // Increased spread for better iPad Pro experience with more photos
+    const randomX = ((hash % 120) - 60) // -60% to +60%
+    const randomY = (((hash * 7) % 80) - 40) // -40% to +40%
 
     return {
-      x: Math.max(-45, Math.min(45, randomX)), // Keep within bounds
-      y: Math.max(-35, Math.min(35, randomY))
+      x: Math.max(-65, Math.min(65, randomX)), // Keep within bounds but wider spread
+      y: Math.max(-45, Math.min(45, randomY))
     }
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-blue-50 relative overflow-hidden">
       {qrCodeUrl && (
-        <div className="fixed top-4 right-4 z-50 bg-white p-3 rounded-xl shadow-xl">
-          <img src={qrCodeUrl} alt="QR Code" className="w-32 h-32" />
-          <p className="text-xs text-center mt-2 font-medium text-gray-600">
-            Scan to Upload
+        <div className="fixed top-4 right-4 z-50 bg-white/90 backdrop-blur-sm p-3 rounded-xl shadow-sm border border-gray-100">
+          <img src={qrCodeUrl} alt="QR Code" className="w-20 h-20" />
+          <p className="text-[10px] text-center mt-2 text-gray-600 font-medium tracking-wide">
+            Scan and share
           </p>
         </div>
       )}
 
       <div className="fixed top-4 left-4 z-40">
-        <h1 className="text-4xl font-bold text-gray-800">
-          Jean Cadre 📸
-        </h1>
-        <div className="flex items-center gap-3 mt-2">
-          <p className="text-gray-600">
-            {totalCount > 0
-              ? `${totalCount} photo${totalCount !== 1 ? 's' : ''} shared${photos.length < totalCount ? ` (showing ${photos.length})` : ''}`
-              : `${photos.length} photo${photos.length !== 1 ? 's' : ''} shared`
-            }
-          </p>
-          <div className={`w-2 h-2 rounded-full ${
-            connectionStatus === 'connected' ? 'bg-green-500' :
-            connectionStatus === 'connecting' ? 'bg-yellow-500 animate-pulse' :
-            'bg-red-500'
-          }`} title={`Connection ${connectionStatus}`} />
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              📸
+              {/* Flash effect */}
+              <div className={`absolute -top-1 -right-1 w-2 h-2 rounded-full animate-ping ${
+                connectionStatus === 'connected' ? 'bg-green-400' :
+                connectionStatus === 'connecting' ? 'bg-yellow-400' :
+                'bg-red-400'
+              }`} />
+            </div>
+            <span className="text-gray-800 font-medium">Jean-Cadre</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <p className="text-gray-700 text-sm">
+              {totalCount} photo{totalCount !== 1 ? 's' : ''}
+            </p>
+            <div className={`w-2 h-2 rounded-full animate-pulse ${
+              connectionStatus === 'connected' ? 'bg-green-500' :
+              connectionStatus === 'connecting' ? 'bg-yellow-500' :
+              'bg-red-500'
+            }`} />
+          </div>
         </div>
       </div>
 
@@ -195,32 +235,44 @@ export default function PreviewPage() {
           </div>
         </div>
       ) : (
-        <div className="relative w-full h-screen flex items-center justify-center pt-20">
+        <div className="relative w-full h-screen flex items-center justify-center">
           <div className="relative w-full max-w-6xl h-full">
             {photos.map((photo, index) => {
-              const position = getRandomPosition(index, photo.id)
+              const position = getRandomPosition(photo.id)
               const tilt = getRandomTilt(photo.id)
+              const isNewestPhoto = index === 0
 
               return (
                 <div
                   key={photo.id}
-                  className={`absolute photo-card ${index === 0 ? 'animate-photo-fly-in' : 'animate-photo-drop'}`}
+                  className={`absolute photo-card ${photo.isNewlyAdded && photo.imageLoaded ? 'animate-photo-fly-in' : ''}`}
                   style={{
                     left: '50%',
                     top: '50%',
                     transform: `translate(calc(-50% + ${position.x}%), calc(-50% + ${position.y}%)) rotate(${tilt}deg)`,
-                    zIndex: 100 - index, // New photos (index 0) have highest z-index
-                    animationDelay: index === 0 ? '0s' : `${index * 0.1}s`,
-                    transition: 'transform 0.8s ease-out',
+                    zIndex: photo.isNewlyAdded ? 1000 : 100 - index,
+                    transition: photo.isNewlyAdded ? 'none' : 'transform 0.8s ease-out',
+                    opacity: photo.imageLoaded ? 1 : 0, // Hide until loaded
                   }}
                 >
                   <div className="relative">
-                    <img
-                      src={getResizedImageUrl(photo.thumbnailUrl, 400, 400, 85)}
-                      alt="Uploaded photo"
-                      className="max-w-sm w-full h-auto rounded-lg"
-                      style={{ maxHeight: '400px', objectFit: 'cover' }}
-                    />
+                    {photo.imageLoaded ? (
+                      <img
+                        src={getResizedImageUrl(photo.thumbnailUrl, 300, 300, 70)}
+                        alt="Uploaded photo"
+                        className="max-w-sm w-full h-auto rounded-lg"
+                        style={{ maxHeight: '300px', objectFit: 'cover' }}
+                      />
+                    ) : (
+                      <div
+                        className="max-w-sm w-full rounded-lg bg-gray-200 animate-pulse flex items-center justify-center"
+                        style={{ height: '300px' }}
+                      >
+                        <svg className="w-12 h-12 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clipRule="evenodd" />
+                        </svg>
+                      </div>
+                    )}
                     <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-4 rounded-b-lg">
                       <p className="text-white font-semibold text-sm">
                         {photo.uploaderName}

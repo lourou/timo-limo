@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
       addSSEClient(controller)
 
       try {
-        const recentPhotos = await getRecentPhotos(10)
+        const recentPhotos = await getRecentPhotos(15)
         const totalCount = await getTotalPhotoCount()
 
         // Send total count first

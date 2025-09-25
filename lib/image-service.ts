@@ -1,6 +1,6 @@
 // Image service - supports both R2 and Cloudflare Images
 import { uploadToR2, getPublicUrl as getR2PublicUrl } from './r2'
-import { uploadToCloudflareImages, getImageUrl, IMAGE_VARIANTS } from './cloudflare-images'
+import { uploadToCloudflareImages, getImageUrl, getOriginalImageUrl, IMAGE_VARIANTS } from './cloudflare-images'
 
 export type ImageService = 'r2' | 'cloudflare-images'
 
@@ -17,18 +17,20 @@ export interface ImageUrls {
 export async function uploadImage(
   file: File,
   key: string,
-  options: ImageUploadOptions = {}
+  options: ImageUploadOptions = {},
+  photoId?: string
 ): Promise<ImageUrls> {
   const { service = 'r2', generateThumbnail = true } = options
 
   if (service === 'cloudflare-images') {
-    return uploadToCloudflareImagesService(file)
+    if (!photoId) throw new Error('Photo ID required for Cloudflare Images')
+    return uploadToCloudflareImagesService(file, photoId)
   } else {
     return uploadToR2Service(file, key, generateThumbnail)
   }
 }
 
-async function uploadToCloudflareImagesService(file: File): Promise<ImageUrls> {
+async function uploadToCloudflareImagesService(file: File, photoId: string): Promise<ImageUrls> {
   const accountId = process.env.CLOUDFLARE_ACCOUNT_ID
   const apiToken = process.env.CLOUDFLARE_IMAGES_API_TOKEN
   const accountHash = process.env.CLOUDFLARE_IMAGES_HASH
@@ -37,11 +39,12 @@ async function uploadToCloudflareImagesService(file: File): Promise<ImageUrls> {
     throw new Error('Cloudflare Images credentials not configured')
   }
 
-  const result = await uploadToCloudflareImages(file, accountId, apiToken)
+  // Use the photo ID as the custom ID to prevent duplicates
+  const result = await uploadToCloudflareImages(file, accountId, apiToken, photoId)
 
   return {
-    original: getImageUrl(result.id, IMAGE_VARIANTS.public, accountHash),
-    thumbnail: getImageUrl(result.id, IMAGE_VARIANTS.thumbnail, accountHash),
+    original: getImageUrl(result.id, IMAGE_VARIANTS.public, accountHash), // Public variant (original size, publicly accessible)
+    thumbnail: getImageUrl(result.id, IMAGE_VARIANTS.thumbnail, accountHash), // 400x400 thumbnail
   }
 }
 
@@ -54,38 +57,49 @@ async function uploadToR2Service(
   const fileExtension = file.name.split('.').pop()
 
   const originalKey = `${key}.${fileExtension}`
-  const thumbnailKey = generateThumbnail ? `thumbnails/${key}.${fileExtension}` : originalKey
 
-  // Upload original
+  // Upload original full-size image
   await uploadToR2(originalKey, buffer, file.type)
 
-  // For now, use same file for thumbnail (Cloudflare can resize on-demand)
-  if (generateThumbnail) {
-    await uploadToR2(thumbnailKey, buffer, file.type)
-  }
+  // For R2, we'll rely on URL-based resizing instead of storing separate thumbnails
+  // This saves storage space and the resizing happens on-demand
+  const originalUrl = getR2PublicUrl(originalKey)
 
   return {
-    original: getR2PublicUrl(originalKey),
-    thumbnail: getR2PublicUrl(thumbnailKey),
+    original: originalUrl,
+    thumbnail: originalUrl, // Same URL, resizing happens via URL parameters
   }
 }
 
-// URL transformation for R2 images using Cloudflare Image Resizing
+// URL transformation for both Cloudflare Images and R2 images
 export function getResizedImageUrl(
   originalUrl: string,
   width?: number,
   height?: number,
   quality: number = 85
 ): string {
-  if (!originalUrl.includes('assets.timo.limo')) {
+  // If it's a Cloudflare Images URL (imagedelivery.net), use variant system
+  if (originalUrl.includes('imagedelivery.net')) {
+    // For Cloudflare Images, we can't directly modify URLs, return as-is
+    // The thumbnail URL should already be optimized
     return originalUrl
   }
 
-  const params = new URLSearchParams()
-  if (width) params.set('width', width.toString())
-  if (height) params.set('height', height.toString())
-  params.set('quality', quality.toString())
-  params.set('format', 'auto') // Auto WebP/AVIF
+  // For R2 images, try using Cloudflare Image Resizing
+  if (originalUrl.includes('assets.timo.limo') || originalUrl.includes('r2.dev') || originalUrl.includes('r2.cloudflarestorage.com')) {
+    // Option 1: Try URL-based resizing (requires Cloudflare Image Resizing enabled on your plan)
+    const params = new URLSearchParams()
+    if (width) params.set('w', width.toString())
+    if (height) params.set('h', height.toString())
+    params.set('q', quality.toString())
+    params.set('f', 'auto')
+    params.set('fit', 'cover')
 
-  return `${originalUrl}?${params.toString()}`
+    const resizedUrl = `${originalUrl}?${params.toString()}`
+    console.log('Attempting resized URL:', resizedUrl)
+    return resizedUrl
+  }
+
+  // Fallback for other URLs
+  return originalUrl
 }

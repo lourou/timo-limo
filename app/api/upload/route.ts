@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
     const { original: originalUrl, thumbnail: thumbnailUrl } = await uploadImage(file, imageKey, {
       service: process.env.CLOUDFLARE_IMAGES_API_TOKEN ? 'cloudflare-images' : 'r2',
       generateThumbnail: true
-    })
+    }, photoId)
 
     console.log(`Generated URLs - Original: ${originalUrl}, Thumbnail: ${thumbnailUrl}`)
 

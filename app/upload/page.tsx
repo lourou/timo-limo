@@ -32,7 +32,7 @@ export default function UploadPage() {
 
     const selectedFiles = Array.from(e.target.files)
     const currentFileCount = files.length
-    const maxFiles = 6
+    const maxFiles = 9
 
     // Check if adding these files would exceed the limit
     if (currentFileCount + selectedFiles.length > maxFiles) {
@@ -133,8 +133,8 @@ export default function UploadPage() {
         setBatchId(uuidv4()) // Reset batch ID for next upload
         setShowConfetti(true)
 
-        // Hide confetti after 3 seconds
-        setTimeout(() => setShowConfetti(false), 3000)
+        // Hide confetti after 6 seconds - longer celebration!
+        setTimeout(() => setShowConfetti(false), 6000)
       }, 1500)
     } catch (error) {
       console.error('Batch creation error:', error)
@@ -158,38 +158,49 @@ export default function UploadPage() {
       {/* Confetti Animation */}
       {showConfetti && (
         <div className="fixed inset-0 pointer-events-none z-50 overflow-hidden">
-          {Array.from({ length: 50 }).map((_, i) => (
-            <div
-              key={i}
-              className="absolute animate-confetti"
-              style={{
-                left: `${Math.random() * 100}%`,
-                animationDelay: `${Math.random() * 3}s`,
-                animationDuration: `${3 + Math.random() * 2}s`
-              }}
-            >
+          {Array.from({ length: 60 }).map((_, i) => {
+            const shapes = ['🎊', '🎉', '✨', '🌟', '⭐', '💫']
+            const colors = ['#ff6b9d', '#45b7d1', '#96ceb4', '#feca57', '#ff9ff3', '#54a0ff']
+            const isEmoji = Math.random() > 0.4
+
+            return (
               <div
-                className="w-2 h-2 rounded"
+                key={i}
+                className="absolute animate-confetti"
                 style={{
-                  backgroundColor: ['#ff6b9d', '#45b7d1', '#96ceb4', '#feca57', '#ff9ff3', '#54a0ff'][Math.floor(Math.random() * 6)]
+                  left: `${Math.random() * 100}%`,
+                  animationDelay: `${Math.random() * 2}s`,
+                  animationDuration: `${3 + Math.random() * 2}s`
                 }}
-              />
-            </div>
-          ))}
+              >
+                {isEmoji ? (
+                  <span style={{ fontSize: `${16 + Math.random() * 8}px` }}>
+                    {shapes[Math.floor(Math.random() * shapes.length)]}
+                  </span>
+                ) : (
+                  <div
+                    style={{
+                      width: `${6 + Math.random() * 6}px`,
+                      height: `${6 + Math.random() * 6}px`,
+                      backgroundColor: colors[Math.floor(Math.random() * colors.length)],
+                      borderRadius: Math.random() > 0.5 ? '50%' : '2px'
+                    }}
+                  />
+                )}
+              </div>
+            )
+          })}
           <div className="absolute inset-0 flex items-center justify-center">
-            <div className="bg-white rounded-2xl px-8 py-6 shadow-2xl text-center animate-bounce">
-              <div className="text-4xl mb-2">🎉</div>
-              <h3 className="text-xl font-semibold text-gray-800">Photos uploaded!</h3>
-              <p className="text-gray-600 mt-1">Check the preview page</p>
+            <div className="bg-white/95 backdrop-blur-sm rounded-2xl px-6 py-4 shadow-lg border border-gray-200 text-center animate-bounce">
+              <div className="text-2xl mb-1">✅</div>
+              <h3 className="text-lg font-medium text-gray-800">Uploaded!</h3>
+              <p className="text-xs text-gray-500 mt-1">Check preview page</p>
             </div>
           </div>
         </div>
       )}
 
       <div className="max-w-lg mx-auto pt-8">
-        <h1 className="text-2xl font-light text-gray-900 mb-8 text-center">
-          Jean Cadre 📸
-        </h1>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Photo selection first */}
@@ -201,13 +212,13 @@ export default function UploadPage() {
               onChange={handleFileSelect}
               className="hidden"
               id="file-upload"
-              disabled={isUploading || files.length >= 6}
+              disabled={isUploading || files.length >= 9}
             />
 
             <label
               htmlFor="file-upload"
               className={`w-full h-32 border-2 border-dashed rounded-xl flex items-center justify-center transition-colors ${
-                files.length >= 6
+                files.length >= 9
                   ? 'border-gray-200 bg-gray-50 cursor-not-allowed'
                   : 'border-gray-300 cursor-pointer hover:border-gray-400 hover:bg-gray-50'
               }`}
@@ -217,10 +228,10 @@ export default function UploadPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v16m8-8H4" />
                 </svg>
                 <p className="text-sm text-gray-600">
-                  {files.length >= 6 ? 'Maximum 6 photos' : 'Choose photos'}
+                  {files.length >= 9 ? 'Maximum 9 photos' : 'Choose photos'}
                 </p>
                 <p className="text-xs text-gray-400 mt-1">
-                  {files.length >= 6 ? 'Remove some to add more' : `${files.length}/6 selected`}
+                  {files.length >= 9 ? 'Remove some to add more' : `${files.length}/9 selected`}
                 </p>
               </div>
             </label>

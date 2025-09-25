@@ -19,10 +19,16 @@ interface CloudflareImagesResponse {
 export async function uploadToCloudflareImages(
   file: File,
   accountId: string,
-  apiToken: string
+  apiToken: string,
+  customId?: string
 ): Promise<ImageUploadResult> {
   const formData = new FormData()
   formData.append('file', file)
+
+  // Use custom ID if provided to avoid duplicates
+  if (customId) {
+    formData.append('id', customId)
+  }
 
   const response = await fetch(
     `https://api.cloudflare.com/client/v4/accounts/${accountId}/images/v1`,
@@ -60,9 +66,21 @@ export function getImageUrl(
   return `https://api.cloudflare.com/client/v4/accounts/images/v1/${imageId}/${variant}`
 }
 
+export function getOriginalImageUrl(
+  imageId: string,
+  accountHash?: string
+): string {
+  if (accountHash) {
+    // Direct URL to original image without any variant/resizing
+    return `https://imagedelivery.net/${accountHash}/${imageId}`
+  }
+  // Fallback to direct API URL (requires signed URLs)
+  return `https://api.cloudflare.com/client/v4/accounts/images/v1/${imageId}`
+}
+
 // Image variants for different sizes
 export const IMAGE_VARIANTS = {
-  thumbnail: 'thumbnail', // 200x200
+  thumbnail: 'thumbnail', // 400x400
   medium: 'medium',       // 800x600
   large: 'large',         // 1200x900
   public: 'public'        // Original size
