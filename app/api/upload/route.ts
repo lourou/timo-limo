@@ -56,13 +56,16 @@ export async function POST(request: NextRequest) {
     const thumbnailKey = `thumbnails/${batchId}/${photoId}.${file.name.split('.').pop()}`
 
     // Upload original file
+    console.log(`Uploading to R2 - Original: ${originalKey}`)
     await uploadToR2(originalKey, buffer, file.type)
 
     // For now, use same file for thumbnail (can be optimized later with Cloudflare Images)
+    console.log(`Uploading to R2 - Thumbnail: ${thumbnailKey}`)
     await uploadToR2(thumbnailKey, buffer, file.type)
 
     const originalUrl = getPublicUrl(originalKey)
     const thumbnailUrl = getPublicUrl(thumbnailKey)
+    console.log(`Generated URLs - Original: ${originalUrl}, Thumbnail: ${thumbnailUrl}`)
 
     const photo: Photo = {
       id: photoId,
@@ -75,8 +78,10 @@ export async function POST(request: NextRequest) {
       order: timestamp,
     }
 
+    console.log('Adding photo to database:', JSON.stringify(photo, null, 2))
     await addPhoto(photo)
-    
+    console.log('Photo added to database successfully')
+
     broadcastPhoto(photo)
 
     return NextResponse.json({

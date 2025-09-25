@@ -37,7 +37,12 @@ export async function createBatch(batch: PhotoBatch): Promise<void> {
   await DB.prepare(`
     INSERT INTO batches (id, uploader_name, comment, timestamp)
     VALUES (?, ?, ?, ?)
-  `).bind(batch.id, batch.uploaderName, batch.comment, batch.timestamp).run()
+  `).bind(
+    batch.id,
+    batch.uploaderName,
+    batch.comment || null,
+    batch.timestamp
+  ).run()
 }
 
 export async function getBatch(batchId: string): Promise<PhotoBatch | null> {
@@ -62,7 +67,7 @@ export async function addPhoto(photo: Photo): Promise<void> {
     photo.originalUrl,
     photo.thumbnailUrl,
     photo.uploaderName,
-    photo.comment,
+    photo.comment || null,
     photo.uploadedAt,
     photo.order
   ).run()

@@ -1,9 +1,17 @@
 // Access R2 from the runtime environment
 function getR2(): R2Bucket {
-  if (typeof process !== 'undefined' && process.env.NODE_ENV === 'development') {
-    throw new Error('R2 bucket not available in development mode')
+  // In Edge Runtime, bindings are available on process.env
+  if (typeof process !== 'undefined' && (process.env as any).R2) {
+    return (process.env as any).R2
   }
-  return (globalThis as any).R2
+
+  // Fallback to global (production deployment)
+  const globalR2 = (globalThis as any).R2
+  if (globalR2) {
+    return globalR2
+  }
+
+  throw new Error('R2 bucket not available. Make sure bindings are configured in wrangler.toml')
 }
 
 function getPublicUrlBase(): string {

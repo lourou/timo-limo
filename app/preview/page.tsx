@@ -5,11 +5,13 @@ import QRCode from 'qrcode'
 
 interface Photo {
   id: string
-  url: string
+  originalUrl: string
   thumbnailUrl: string
   uploaderName: string
   comment?: string
-  timestamp: number
+  uploadedAt: number
+  batchId: string
+  order: number
 }
 
 export default function PreviewPage() {
@@ -32,8 +34,16 @@ export default function PreviewPage() {
       eventSourceRef.current = new EventSource('/api/photos/stream')
       
       eventSourceRef.current.onmessage = (event) => {
-        const newPhoto: Photo = JSON.parse(event.data)
-        setPhotos(prev => [newPhoto, ...prev])
+        try {
+          const newPhoto: Photo = JSON.parse(event.data)
+          setPhotos(prev => {
+            // Keep only the most recent 10 photos, with newest first
+            const updated = [newPhoto, ...prev.filter(p => p.id !== newPhoto.id)]
+            return updated.slice(0, 10)
+          })
+        } catch (error) {
+          console.error('Error parsing SSE message:', error)
+        }
       }
 
       eventSourceRef.current.onerror = () => {
@@ -116,7 +126,7 @@ export default function PreviewPage() {
                 >
                   <div className="relative">
                     <img
-                      src={photo.thumbnailUrl || photo.url}
+                      src={photo.thumbnailUrl}
                       alt="Uploaded photo"
                       className="max-w-sm w-full h-auto rounded-lg"
                       style={{ maxHeight: '400px', objectFit: 'cover' }}

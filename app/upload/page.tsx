@@ -17,7 +17,7 @@ export default function UploadPage() {
   const [name, setName] = useState('')
   const [comment, setComment] = useState('')
   const [isUploading, setIsUploading] = useState(false)
-  const [batchId] = useState(uuidv4())
+  const [batchId, setBatchId] = useState(uuidv4())
 
   useEffect(() => {
     const savedName = Cookies.get('uploaderName')
@@ -32,12 +32,23 @@ export default function UploadPage() {
     const newFiles = Array.from(e.target.files).map(file => ({
       id: uuidv4(),
       file,
-      preview: URL.createObjectURL(file),
+      preview: '', // Start with empty preview
       progress: 0,
       status: 'pending' as const
     }))
 
     setFiles(prev => [...prev, ...newFiles])
+
+    // Generate previews progressively to avoid UI freezing
+    newFiles.forEach((fileInfo, index) => {
+      setTimeout(() => {
+        setFiles(prev => prev.map(f =>
+          f.id === fileInfo.id
+            ? { ...f, preview: URL.createObjectURL(fileInfo.file) }
+            : f
+        ))
+      }, index * 50) // Stagger preview generation by 50ms each
+    })
   }
 
   const handleSubmit = async (e: FormEvent) => {
@@ -102,11 +113,13 @@ export default function UploadPage() {
       setTimeout(() => {
         setFiles([])
         setComment('')
+        setBatchId(uuidv4()) // Reset batch ID for next upload
         alert('All photos uploaded successfully!')
       }, 1500)
     } catch (error) {
       console.error('Batch creation error:', error)
       alert('Failed to start upload. Please try again.')
+      setBatchId(uuidv4()) // Reset batch ID on error to avoid UNIQUE constraint
     } finally {
       setIsUploading(false)
     }
@@ -181,11 +194,17 @@ export default function UploadPage() {
               <div className="mt-6 grid grid-cols-2 md:grid-cols-3 gap-4">
                 {files.map(file => (
                   <div key={file.id} className="relative group">
-                    <img
-                      src={file.preview}
-                      alt="Preview"
-                      className="w-full h-32 object-cover rounded-lg"
-                    />
+                    {file.preview ? (
+                      <img
+                        src={file.preview}
+                        alt="Preview"
+                        className="w-full h-32 object-cover rounded-lg"
+                      />
+                    ) : (
+                      <div className="w-full h-32 bg-gray-200 rounded-lg flex items-center justify-center">
+                        <div className="text-gray-400 text-sm">Loading preview...</div>
+                      </div>
+                    )}
                     {file.status === 'uploading' && (
                       <div className="absolute inset-0 bg-black bg-opacity-50 rounded-lg flex items-center justify-center">
                         <div className="text-white text-sm">Uploading...</div>

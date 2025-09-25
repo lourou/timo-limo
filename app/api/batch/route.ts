@@ -22,17 +22,18 @@ export async function POST(request: NextRequest) {
     const batch: PhotoBatch = {
       id: batchId,
       uploaderName,
-      comment,
+      comment: comment || undefined,
       timestamp: Date.now(),
     }
 
+    console.log('Creating batch:', JSON.stringify(batch, null, 2))
     await createBatch(batch)
 
     return NextResponse.json({ success: true, batch })
   } catch (error) {
     console.error('Batch creation error:', error)
     return NextResponse.json(
-      { error: 'Failed to create batch' },
+      { error: 'Failed to create batch', details: error instanceof Error ? error.message : String(error) },
       { status: 500 }
     )
   }
