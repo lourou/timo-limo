@@ -27,19 +27,64 @@ export default function PreviewPage() {
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'error'>('connecting')
   const eventSourceRef = useRef<EventSource | null>(null)
 
-  // Preload image and update state when loaded
+
+  // Preload image and update state when loaded - optimized version
   const preloadImage = (photo: Photo, isNewlyAdded: boolean = false): Promise<PhotoState> => {
     return new Promise((resolve) => {
       const img = new Image()
+
+      // Set loading="lazy" equivalent behavior
+      img.loading = 'lazy' as any
+
+      const timeout = setTimeout(() => {
+        // Fallback if image takes too long
+        resolve({ ...photo, imageLoaded: true, isNewlyAdded })
+      }, 3000)
+
       img.onload = () => {
+        clearTimeout(timeout)
         resolve({ ...photo, imageLoaded: true, isNewlyAdded })
       }
       img.onerror = () => {
+        clearTimeout(timeout)
         // Still resolve even on error to prevent hanging
         resolve({ ...photo, imageLoaded: true, isNewlyAdded })
       }
-      img.src = getResizedImageUrl(photo.thumbnailUrl, 300, 300, 70)
+
+      // Use the thumbnail URL directly (already optimized as 400x400)
+      img.src = photo.thumbnailUrl
     })
+  }
+
+  // Batch preload images to avoid overwhelming the browser
+  const preloadImagesInBatch = async (photos: Photo[], batchSize: number = 3) => {
+    for (let i = 0; i < photos.length; i += batchSize) {
+      const batch = photos.slice(i, i + batchSize)
+      const promises = batch.map(photo => preloadImage(photo, false))
+
+      try {
+        const loadedPhotos = await Promise.all(promises)
+        setPhotos(prev => {
+          const updated = [...prev]
+          loadedPhotos.forEach(loadedPhoto => {
+            const index = updated.findIndex(p => p.id === loadedPhoto.id)
+            if (index !== -1) {
+              updated[index] = loadedPhoto
+            } else {
+              updated.push(loadedPhoto)
+            }
+          })
+          return updated.slice(0, 15)
+        })
+      } catch (error) {
+        console.error('Batch preload error:', error)
+      }
+
+      // Small delay between batches to prevent overwhelming
+      if (i + batchSize < photos.length) {
+        await new Promise(resolve => setTimeout(resolve, 100))
+      }
+    }
   }
 
   useEffect(() => {
@@ -78,6 +123,10 @@ export default function PreviewPage() {
           if (message.type === 'totalCount') {
             console.log('Updating total count:', message.count)
             setTotalCount(message.count)
+          } else if (message.type === 'initialPhotos') {
+            console.log('Loading initial photos batch:', message.photos.length)
+            // Use batch preloading for initial photos
+            preloadImagesInBatch(message.photos)
           } else if (message.type === 'photo') {
             console.log('Adding new photo:', message.id)
             const newPhoto: Photo = {
@@ -258,7 +307,7 @@ export default function PreviewPage() {
                   <div className="relative">
                     {photo.imageLoaded ? (
                       <img
-                        src={getResizedImageUrl(photo.thumbnailUrl, 300, 300, 70)}
+                        src={photo.thumbnailUrl}
                         alt="Uploaded photo"
                         className="max-w-sm w-full h-auto rounded-lg"
                         style={{ maxHeight: '300px', objectFit: 'cover' }}
@@ -283,6 +332,7 @@ export default function PreviewPage() {
                         </p>
                       )}
                     </div>
+
                   </div>
                 </div>
               )

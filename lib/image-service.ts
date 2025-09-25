@@ -96,7 +96,6 @@ export function getResizedImageUrl(
     params.set('fit', 'cover')
 
     const resizedUrl = `${originalUrl}?${params.toString()}`
-    console.log('Attempting resized URL:', resizedUrl)
     return resizedUrl
   }
 
