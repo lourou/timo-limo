@@ -1,17 +1,19 @@
 # Timo Limo - Photo Upload & Live Preview App
 
-A modern photo upload application with real-time preview, built with Next.js and deployed on Cloudflare Pages with D1 database and R2 storage.
+A modern photo upload application with real-time preview, built with Next.js and deployed on Cloudflare Pages.
 
 ## Features
 
 - 📱 Mobile-optimized photo upload interface
 - 🎬 Live preview page with animated photo drops
-- 💾 Cloudflare R2 for image storage (cost-effective, no egress fees)
-- 📄 Cloudflare D1 (SQLite) for metadata storage
-- 🎨 Automatic image optimization and thumbnail generation
+- 🖼️ Cloudflare Images for storage & optimization (recommended)
+- 💾 Cloudflare R2 fallback storage option
+- 📄 Cloudflare D1 (SQLite) for metadata
+- 🎨 Automatic thumbnail generation & variants
 - 🔗 QR code for easy sharing
 - 🍪 Cookie-based name persistence
 - ⏱ Real-time updates via Server-Sent Events
+- 📝 Original filename preservation
 
 ## Setup Instructions
 
@@ -38,7 +40,15 @@ npx wrangler d1 create timo-limo-db
 ```
 This will output a database ID. Copy it to your `wrangler.toml`
 
-#### Create R2 Bucket
+#### Create Storage (Choose One)
+
+**Option A: Cloudflare Images (Recommended)**
+- Go to Cloudflare Dashboard > Images
+- Enable Cloudflare Images
+- Get your API token and account hash
+- Add to environment variables
+
+**Option B: R2 Bucket**
 ```bash
 npx wrangler r2 bucket create timo-limo-photos
 ```
@@ -199,12 +209,12 @@ npx wrangler d1 info DB_NAME
 
 ## Architecture
 
-- **Frontend**: Next.js 14 with App Router
-- **Hosting**: Cloudflare Pages
+- **Frontend**: Next.js 15 with App Router
+- **Hosting**: Cloudflare Pages (Edge Runtime)
 - **Database**: Cloudflare D1 (SQLite)
-- **Storage**: Cloudflare R2 (S3-compatible)
+- **Storage**: Cloudflare Images (primary) / R2 (fallback)
 - **Real-time**: Server-Sent Events
-- **Image Processing**: Sharp for optimization
+- **Image Processing**: Canvas API (client-side) + Cloudflare transforms
 
 
 ## License
