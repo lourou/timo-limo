@@ -330,12 +330,22 @@ export default function UploadPage() {
               <div className="text-4xl mb-2 animate-pulse">📸🎉</div>
               <h3 className="text-xl font-semibold text-gray-800 mb-2">Jean Cadre says</h3>
               <p className="text-sm text-gray-600 mb-4">Merci beaucoup ! Thank you so much!</p>
-              <button
-                onClick={uploadMore}
-                className="bg-gray-900 text-white px-6 py-2 rounded-xl text-sm font-medium hover:bg-gray-800 transition-all duration-300 pointer-events-auto animate-pulse hover:animate-none hover:scale-105 shadow-lg hover:shadow-xl"
-              >
-                📸 Upload More Photos 🎉
-              </button>
+              <div className="space-y-3">
+                <button
+                  onClick={uploadMore}
+                  className="bg-gray-900 text-white px-6 py-2 rounded-xl text-sm font-medium hover:bg-gray-800 transition-all duration-300 pointer-events-auto animate-pulse hover:animate-none hover:scale-105 shadow-lg hover:shadow-xl"
+                >
+                  📸 Upload More Photos 🎉
+                </button>
+                <div className="text-center">
+                  <a
+                    href="/gallery"
+                    className="inline-block bg-gradient-to-r from-purple-500 to-indigo-600 text-white px-4 py-2 rounded-lg text-xs font-medium hover:shadow-lg transform hover:scale-105 transition-all duration-200 pointer-events-auto"
+                  >
+                    🎡 Browse All Photos
+                  </a>
+                </div>
+              </div>
             </div>
           </div>
         </div>

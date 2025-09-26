@@ -19,8 +19,8 @@ export async function GET(request: NextRequest) {
         const countData = `data: ${JSON.stringify({ type: 'totalCount', count: totalCount })}\n\n`
         controller.enqueue(encoder.encode(countData))
 
-        // Send recent photos individually to maintain animation system
-        for (const photo of recentPhotos.reverse()) {
+        // Send recent photos individually (newest first for initial load)
+        for (const photo of recentPhotos) {
           const photoData = `data: ${JSON.stringify({ type: 'photo', ...photo })}\n\n`
           controller.enqueue(encoder.encode(photoData))
         }

@@ -88,3 +88,51 @@
     opacity: 1;
   }
 }
+
+@keyframes gallery-slide-in-left {
+  0% {
+    transform: translateX(-100%) scale(0.8) rotate(-5deg);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(0) scale(1) rotate(0deg);
+    opacity: 1;
+  }
+}
+
+@keyframes gallery-slide-in-right {
+  0% {
+    transform: translateX(100%) scale(0.8) rotate(5deg);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(0) scale(1) rotate(0deg);
+    opacity: 1;
+  }
+}
+
+@keyframes gallery-pop-in {
+  0% {
+    transform: scale(0.3) rotate(180deg);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.1) rotate(0deg);
+  }
+  100% {
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+  }
+}
+
+.gallery-slide-left {
+  animation: gallery-slide-in-left 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.gallery-slide-right {
+  animation: gallery-slide-in-right 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.gallery-pop {
+  animation: gallery-pop-in 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
