@@ -54,9 +54,12 @@ export default function UploadPage() {
           })
         })
 
-        if (!batchResponse.ok) throw new Error('Failed to create batch')
+        if (!batchResponse.ok) {
+          throw new Error('Failed to create batch')
+        }
+
         setBatchCreated(true)
-        console.log('Batch created in uploadFile:', batchId)
+        console.log('Batch ready for upload')
       } catch (error) {
         console.error('Batch creation error in uploadFile:', error)
         setFiles(prev => prev.map(f =>
@@ -141,6 +144,7 @@ export default function UploadPage() {
         })
 
         if (!batchResponse.ok) throw new Error('Failed to create batch')
+
         setBatchCreated(true)
         console.log('Auto-created batch:', batchId)
       } catch (error) {
@@ -203,6 +207,7 @@ export default function UploadPage() {
       })
 
       if (!batchResponse.ok) throw new Error('Failed to create batch')
+
       setBatchCreated(true)
       setShowNameForm(false)
     } catch (error) {
@@ -227,15 +232,16 @@ export default function UploadPage() {
   const uploadMore = async () => {
     setFiles([])
     setShowConfetti(false)
-    setBatchId(uuidv4()) // New batch ID for new session
     setComment('') // Clear previous comment
+
+    // Generate ONE new batch ID for the new session
+    const newBatchId = uuidv4()
+    setBatchId(newBatchId)
+    setBatchCreated(false) // Reset batch created flag for new session
 
     // If user name is already set, create batch immediately
     if (name.trim()) {
       try {
-        const newBatchId = uuidv4()
-        setBatchId(newBatchId)
-
         const batchResponse = await fetch('/api/batch', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -247,6 +253,7 @@ export default function UploadPage() {
         })
 
         if (!batchResponse.ok) throw new Error('Failed to create batch')
+
         setBatchCreated(true)
         console.log('New batch created for upload more:', newBatchId)
       } catch (error) {
@@ -256,7 +263,6 @@ export default function UploadPage() {
         setShowNameForm(true)
       }
     } else {
-      setBatchCreated(false)
       setShowNameForm(true) // Show name form if no name saved
     }
   }

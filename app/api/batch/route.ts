@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createBatch, PhotoBatch } from '@/lib/db-d1'
+import { createBatch, getBatch, PhotoBatch } from '@/lib/db-d1'
 
 export const runtime = 'edge'
 
@@ -19,6 +19,19 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // First, check if batch already exists - idempotent!
+    const existingBatch = await getBatch(batchId)
+    if (existingBatch) {
+      console.log('Batch already exists, reusing:', batchId)
+      // Return success with existing batch - totally fine!
+      return NextResponse.json({
+        success: true,
+        batch: existingBatch,
+        existing: true
+      })
+    }
+
+    // Create new batch
     const batch: PhotoBatch = {
       id: batchId,
       uploaderName,
@@ -26,10 +39,13 @@ export async function POST(request: NextRequest) {
       timestamp: Date.now(),
     }
 
-    console.log('Creating batch:', JSON.stringify(batch, null, 2))
+    console.log('Creating new batch:', batchId)
     await createBatch(batch)
 
-    return NextResponse.json({ success: true, batch })
+    return NextResponse.json({
+      success: true,
+      batch
+    })
   } catch (error) {
     console.error('Batch creation error:', error)
     return NextResponse.json(
