@@ -69,6 +69,7 @@ export async function POST(request: NextRequest) {
       comment: batch.comment,
       uploadedAt: timestamp,
       order: timestamp,
+      originalFilename: file.name,
     }
 
     console.log('Adding photo to database:', JSON.stringify(photo, null, 2))

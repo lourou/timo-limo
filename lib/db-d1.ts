@@ -14,6 +14,7 @@ export interface Photo {
   comment?: string
   uploadedAt: number
   order: number
+  originalFilename?: string
 }
 
 // Get DB from Cloudflare Workers environment
@@ -59,8 +60,8 @@ export async function getBatch(batchId: string): Promise<PhotoBatch | null> {
 export async function addPhoto(photo: Photo): Promise<void> {
   const DB = getDB()
   await DB.prepare(`
-    INSERT INTO photos (id, batch_id, original_url, thumbnail_url, uploader_name, comment, uploaded_at, order_index)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO photos (id, batch_id, original_url, thumbnail_url, uploader_name, comment, uploaded_at, order_index, original_filename)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     photo.id,
     photo.batchId,
@@ -69,7 +70,8 @@ export async function addPhoto(photo: Photo): Promise<void> {
     photo.uploaderName,
     photo.comment || null,
     photo.uploadedAt,
-    photo.order
+    photo.order,
+    photo.originalFilename || null
   ).run()
 }
 
@@ -133,7 +135,8 @@ export async function getBatchPhotos(batchId: string): Promise<Photo[]> {
       uploader_name as uploaderName,
       comment,
       uploaded_at as uploadedAt,
-      order_index as "order"
+      order_index as "order",
+      original_filename as originalFilename
     FROM photos
     WHERE batch_id = ?
     ORDER BY order_index ASC
