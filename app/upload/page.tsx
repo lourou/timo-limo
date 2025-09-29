@@ -13,17 +13,24 @@ interface UploadFile {
   retryCount?: number
 }
 
+const validateAccess = (input: string): boolean => {
+  const chars = [106, 101, 97, 110, 52, 48] // ASCII codes
+  const expected = String.fromCharCode(...chars)
+  return input.toLowerCase() === expected
+}
+
 export default function UploadPage() {
   const [files, setFiles] = useState<UploadFile[]>([])
   const [name, setName] = useState('')
   const [comment, setComment] = useState('')
-  const [isUploading, setIsUploading] = useState(false)
   const [batchId, setBatchId] = useState(uuidv4())
   const [showConfetti, setShowConfetti] = useState(false)
   const [showNameForm, setShowNameForm] = useState(true)
   const [batchCreated, setBatchCreated] = useState(false)
   const [uploadQueue, setUploadQueue] = useState<string[]>([])
   const [activeUploads, setActiveUploads] = useState<Set<string>>(new Set())
+  const [password, setPassword] = useState('')
+  const [passwordError, setPasswordError] = useState('')
 
   useEffect(() => {
     const savedName = Cookies.get('uploaderName')
@@ -273,7 +280,21 @@ export default function UploadPage() {
       return
     }
 
+    // Check password only for completely new users (no saved name at all)
+    const savedName = Cookies.get('uploaderName')
+
+    if (!savedName) {
+      // Completely new user - check password
+      if (!validateAccess(password)) {
+        setPasswordError('Incorrect password. Please try again.')
+        return
+      }
+    }
+
+    // Password correct or existing user - save credentials
     Cookies.set('uploaderName', name, { expires: 365 })
+    Cookies.set('hasAccess', 'true', { expires: 365 })
+    setPasswordError('')
 
     // Create ONE batch for this user session
     try {
@@ -364,6 +385,8 @@ export default function UploadPage() {
   const handleNameChange = () => {
     setShowNameForm(true)
     setBatchCreated(false) // Allow creating new batch with new name
+    setPassword('') // Clear password field
+    setPasswordError('') // Clear any password errors
   }
 
   return (
@@ -450,6 +473,25 @@ export default function UploadPage() {
                 required
                 autoFocus
               />
+              {/* Show password field only for completely new users */}
+              {!Cookies.get('uploaderName') && (
+                <div className="mt-4">
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => {
+                      setPassword(e.target.value)
+                      setPasswordError('') // Clear error when typing
+                    }}
+                    className={`w-full px-4 py-3 border ${passwordError ? 'border-red-300' : 'border-gray-200'} rounded-xl bg-transparent focus:border-gray-400 focus:ring-0 placeholder-gray-400 text-center`}
+                    placeholder="Access password"
+                    required
+                  />
+                  {passwordError && (
+                    <p className="text-red-500 text-sm mt-2 text-center">{passwordError}</p>
+                  )}
+                </div>
+              )}
               <textarea
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
