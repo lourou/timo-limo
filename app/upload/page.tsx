@@ -10,6 +10,7 @@ interface UploadFile {
   preview: string
   progress: number
   status: 'pending' | 'uploading' | 'complete' | 'error'
+  retryCount?: number
 }
 
 export default function UploadPage() {
@@ -21,6 +22,8 @@ export default function UploadPage() {
   const [showConfetti, setShowConfetti] = useState(false)
   const [showNameForm, setShowNameForm] = useState(true)
   const [batchCreated, setBatchCreated] = useState(false)
+  const [uploadQueue, setUploadQueue] = useState<string[]>([])
+  const [activeUploads, setActiveUploads] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     const savedName = Cookies.get('uploaderName')
@@ -32,10 +35,15 @@ export default function UploadPage() {
 
 
 
-  // Upload individual file to existing batch
-  const uploadFile = async (uploadFile: UploadFile) => {
+  // Constants for upload management
+  const MAX_CONCURRENT_UPLOADS = 3
+  const MAX_RETRIES = 2
+  const UPLOAD_TIMEOUT = 60000 // 60 seconds per file
+
+  // Upload individual file to existing batch with timeout and retry
+  const uploadFile = async (fileToUpload: UploadFile, isRetry = false) => {
     console.log('Upload file called:', {
-      fileId: uploadFile.id,
+      fileId: fileToUpload.id,
       batchCreated,
       batchId
     })
@@ -63,7 +71,7 @@ export default function UploadPage() {
       } catch (error) {
         console.error('Batch creation error in uploadFile:', error)
         setFiles(prev => prev.map(f =>
-          f.id === uploadFile.id
+          f.id === fileToUpload.id
             ? { ...f, status: 'error' as const }
             : f
         ))
@@ -77,29 +85,35 @@ export default function UploadPage() {
     }
 
     setFiles(prev => prev.map(f =>
-      f.id === uploadFile.id
+      f.id === fileToUpload.id
         ? { ...f, status: 'uploading' as const }
         : f
     ))
 
     try {
-      // Upload the file to existing batch
+      // Upload the file to existing batch with timeout
       const formData = new FormData()
-      formData.append('file', uploadFile.file)
+      formData.append('file', fileToUpload.file)
       formData.append('batchId', batchId) // Use session batch ID
-      formData.append('fileId', uploadFile.id)
+      formData.append('fileId', fileToUpload.id)
+
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT)
 
       const response = await fetch('/api/upload', {
         method: 'POST',
-        body: formData
+        body: formData,
+        signal: controller.signal
       })
+
+      clearTimeout(timeoutId)
 
       if (!response.ok) throw new Error('Upload failed')
 
       const result = await response.json() as { photo: { thumbnailUrl: string } }
 
       setFiles(prev => prev.map(f =>
-        f.id === uploadFile.id
+        f.id === fileToUpload.id
           ? {
               ...f,
               status: 'complete' as const,
@@ -109,15 +123,84 @@ export default function UploadPage() {
             }
           : f
       ))
-    } catch (error) {
+    } catch (error: any) {
       console.error('Upload error:', error)
+
+      // Check if it's a timeout or network error and if we should retry
+      const isTimeout = error.name === 'AbortError'
+      const isNetworkError = error.message === 'Failed to fetch' || error.message === 'Network request failed'
+      const currentRetryCount = fileToUpload.retryCount || 0
+
+      if ((isTimeout || isNetworkError) && currentRetryCount < MAX_RETRIES && !isRetry) {
+        console.log(`Retrying upload for file ${fileToUpload.id} (attempt ${currentRetryCount + 1}/${MAX_RETRIES})`)
+
+        // Update retry count
+        setFiles(prev => prev.map(f =>
+          f.id === fileToUpload.id
+            ? { ...f, retryCount: currentRetryCount + 1 }
+            : f
+        ))
+
+        // Wait a bit before retry
+        await new Promise(resolve => setTimeout(resolve, 1000 * (currentRetryCount + 1)))
+
+        // Retry the upload with updated retry count
+        const retryFile = { ...fileToUpload, retryCount: currentRetryCount + 1 }
+        return await uploadFile(retryFile, true)
+      }
+
+      // Mark as error if max retries exceeded or other error
       setFiles(prev => prev.map(f =>
-        f.id === uploadFile.id
+        f.id === fileToUpload.id
           ? { ...f, status: 'error' as const }
           : f
       ))
+    } finally {
+      // Remove from active uploads
+      setActiveUploads(prev => {
+        const next = new Set(prev)
+        next.delete(fileToUpload.id)
+        return next
+      })
     }
   }
+
+  // Process upload queue
+  const processUploadQueue = async () => {
+    // Get next file to upload
+    const nextFileId = uploadQueue.find(id => !activeUploads.has(id))
+    if (!nextFileId) return
+
+    // Check if we're at max concurrent uploads
+    if (activeUploads.size >= MAX_CONCURRENT_UPLOADS) return
+
+    const file = files.find(f => f.id === nextFileId)
+    if (!file || file.status !== 'pending') {
+      // Remove from queue if file not found or already processed
+      setUploadQueue(prev => prev.filter(id => id !== nextFileId))
+      return
+    }
+
+    // Add to active uploads
+    setActiveUploads(prev => {
+      const next = new Set(prev)
+      next.add(nextFileId)
+      return next
+    })
+
+    // Remove from queue
+    setUploadQueue(prev => prev.filter(id => id !== nextFileId))
+
+    // Upload the file
+    await uploadFile(file)
+  }
+
+  // Effect to process queue when it changes
+  useEffect(() => {
+    if (uploadQueue.length > 0 && activeUploads.size < MAX_CONCURRENT_UPLOADS) {
+      processUploadQueue()
+    }
+  }, [uploadQueue, activeUploads, files])
 
   const handleFileSelect = async (e: ChangeEvent<HTMLInputElement>) => {
     console.log('File select triggered:', {
@@ -175,10 +258,8 @@ export default function UploadPage() {
 
     setFiles(prev => [...prev, ...newFiles])
 
-    // Start uploads immediately (no local previews)
-    newFiles.forEach(file => {
-      uploadFile(file)
-    })
+    // Add files to upload queue instead of uploading immediately
+    setUploadQueue(prev => [...prev, ...newFiles.map(f => f.id)])
 
     // Reset file input so user can select more files
     e.target.value = ''
@@ -491,9 +572,35 @@ export default function UploadPage() {
                   <span className="text-gray-500">
                     {files.filter(f => f.status === 'complete').length} of {files.length} uploaded
                   </span>
-                  <span className="text-gray-500">
-                    {files.filter(f => f.status === 'uploading').length > 0 && 'Uploading...'}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    {uploadQueue.length > 0 && (
+                      <span className="text-gray-500">
+                        {uploadQueue.length} in queue
+                      </span>
+                    )}
+                    {activeUploads.size > 0 && (
+                      <span className="text-gray-500">
+                        {activeUploads.size} uploading...
+                      </span>
+                    )}
+                    {files.filter(f => f.status === 'error').length > 0 && (
+                      <button
+                        onClick={() => {
+                          const errorFiles = files.filter(f => f.status === 'error')
+                          // Reset error files to pending and add to queue
+                          setFiles(prev => prev.map(f =>
+                            f.status === 'error'
+                              ? { ...f, status: 'pending' as const, retryCount: 0 }
+                              : f
+                          ))
+                          setUploadQueue(prev => [...prev, ...errorFiles.map(f => f.id)])
+                        }}
+                        className="text-red-600 hover:text-red-700 font-medium"
+                      >
+                        Retry {files.filter(f => f.status === 'error').length} failed
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
