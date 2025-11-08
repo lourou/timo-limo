@@ -17,6 +17,29 @@ export interface Photo {
   originalFilename?: string
 }
 
+// Deletion flag stored in comment field
+const DELETED_FLAG = '__DELETED__'
+
+export function isPhotoDeleted(photo: Photo): boolean {
+  return photo.comment?.startsWith(DELETED_FLAG) || false
+}
+
+export function getPhotoComment(photo: Photo): string | undefined {
+  if (!photo.comment) return undefined
+  if (photo.comment.startsWith(DELETED_FLAG)) {
+    return photo.comment.substring(DELETED_FLAG.length)
+  }
+  return photo.comment
+}
+
+export function setPhotoDeleted(photo: Photo, deleted: boolean, originalComment?: string): string | null {
+  if (deleted) {
+    const comment = originalComment || photo.comment || ''
+    return `${DELETED_FLAG}${comment}`
+  }
+  return originalComment || null
+}
+
 // Get DB from Cloudflare Workers environment
 function getDB(): D1Database {
   // In Edge Runtime, bindings are available on process.env
@@ -94,53 +117,109 @@ export async function getPhoto(photoId: string): Promise<Photo | null> {
   return result as unknown as Photo
 }
 
-export async function getRecentPhotos(limit: number = 50): Promise<Photo[]> {
+export async function getRecentPhotos(limit: number = 50, includeDeleted: boolean = false): Promise<Photo[]> {
   const DB = getDB()
-  const results = await DB.prepare(`
-    SELECT
-      id,
-      batch_id as batchId,
-      original_url as originalUrl,
-      thumbnail_url as thumbnailUrl,
-      uploader_name as uploaderName,
-      comment,
-      uploaded_at as uploadedAt,
-      order_index as "order"
-    FROM photos
-    ORDER BY uploaded_at DESC
-    LIMIT ?
-  `).bind(limit).all()
+  const query = includeDeleted
+    ? `
+      SELECT
+        id,
+        batch_id as batchId,
+        original_url as originalUrl,
+        thumbnail_url as thumbnailUrl,
+        uploader_name as uploaderName,
+        comment,
+        uploaded_at as uploadedAt,
+        order_index as "order",
+        original_filename as originalFilename
+      FROM photos
+      ORDER BY uploaded_at DESC
+      LIMIT ?
+    `
+    : `
+      SELECT
+        id,
+        batch_id as batchId,
+        original_url as originalUrl,
+        thumbnail_url as thumbnailUrl,
+        uploader_name as uploaderName,
+        comment,
+        uploaded_at as uploadedAt,
+        order_index as "order",
+        original_filename as originalFilename
+      FROM photos
+      WHERE comment IS NULL OR comment NOT LIKE '${DELETED_FLAG}%'
+      ORDER BY uploaded_at DESC
+      LIMIT ?
+    `
 
+  const results = await DB.prepare(query).bind(limit).all()
   return results.results as unknown as Photo[]
 }
 
-export async function getTotalPhotoCount(): Promise<number> {
+export async function getTotalPhotoCount(includeDeleted: boolean = false): Promise<number> {
   const DB = getDB()
-  const result = await DB.prepare(`
-    SELECT COUNT(*) as count
-    FROM photos
-  `).first()
+  const query = includeDeleted
+    ? `SELECT COUNT(*) as count FROM photos`
+    : `SELECT COUNT(*) as count FROM photos WHERE comment IS NULL OR comment NOT LIKE '${DELETED_FLAG}%'`
 
+  const result = await DB.prepare(query).first()
   return (result as any)?.count || 0
 }
 
-export async function getBatchPhotos(batchId: string): Promise<Photo[]> {
+export async function getBatchPhotos(batchId: string, includeDeleted: boolean = false): Promise<Photo[]> {
+  const DB = getDB()
+  const query = includeDeleted
+    ? `
+      SELECT
+        id,
+        batch_id as batchId,
+        original_url as originalUrl,
+        thumbnail_url as thumbnailUrl,
+        uploader_name as uploaderName,
+        comment,
+        uploaded_at as uploadedAt,
+        order_index as "order",
+        original_filename as originalFilename
+      FROM photos
+      WHERE batch_id = ?
+      ORDER BY order_index ASC
+    `
+    : `
+      SELECT
+        id,
+        batch_id as batchId,
+        original_url as originalUrl,
+        thumbnail_url as thumbnailUrl,
+        uploader_name as uploaderName,
+        comment,
+        uploaded_at as uploadedAt,
+        order_index as "order",
+        original_filename as originalFilename
+      FROM photos
+      WHERE batch_id = ? AND (comment IS NULL OR comment NOT LIKE '${DELETED_FLAG}%')
+      ORDER BY order_index ASC
+    `
+
+  const results = await DB.prepare(query).bind(batchId).all()
+  return results.results as unknown as Photo[]
+}
+
+export async function updatePhotoComment(photoId: string, comment: string | null): Promise<void> {
+  const DB = getDB()
+  await DB.prepare(`
+    UPDATE photos
+    SET comment = ?
+    WHERE id = ?
+  `).bind(comment, photoId).run()
+}
+
+export async function getAllBatches(): Promise<PhotoBatch[]> {
   const DB = getDB()
   const results = await DB.prepare(`
-    SELECT
-      id,
-      batch_id as batchId,
-      original_url as originalUrl,
-      thumbnail_url as thumbnailUrl,
-      uploader_name as uploaderName,
-      comment,
-      uploaded_at as uploadedAt,
-      order_index as "order",
-      original_filename as originalFilename
-    FROM photos
-    WHERE batch_id = ?
-    ORDER BY order_index ASC
-  `).bind(batchId).all()
+    SELECT id, uploader_name as uploaderName, comment, timestamp
+    FROM batches
+    ORDER BY timestamp DESC
+  `).all()
 
-  return results.results as unknown as Photo[]
+  return results.results as unknown as PhotoBatch[]
 }

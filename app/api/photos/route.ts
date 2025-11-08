@@ -7,9 +7,10 @@ export async function GET(request: NextRequest) {
   try {
     const url = new URL(request.url)
     const limit = parseInt(url.searchParams.get('limit') || '100')
+    const includeDeleted = url.searchParams.get('includeDeleted') === 'true'
 
-    const photos = await getRecentPhotos(limit)
-    const totalCount = await getTotalPhotoCount()
+    const photos = await getRecentPhotos(limit, includeDeleted)
+    const totalCount = await getTotalPhotoCount(includeDeleted)
 
     return NextResponse.json({
       photos,

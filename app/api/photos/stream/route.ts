@@ -12,8 +12,9 @@ export async function GET(request: NextRequest) {
       addSSEClient(controller)
 
       try {
-        const recentPhotos = await getRecentPhotos(15)
-        const totalCount = await getTotalPhotoCount()
+        // Only show non-deleted photos in the stream
+        const recentPhotos = await getRecentPhotos(15, false)
+        const totalCount = await getTotalPhotoCount(false)
 
         // Send total count first
         const countData = `data: ${JSON.stringify({ type: 'totalCount', count: totalCount })}\n\n`
