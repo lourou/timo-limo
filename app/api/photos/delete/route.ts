@@ -5,7 +5,8 @@ export const runtime = 'edge'
 
 export async function POST(request: NextRequest) {
   try {
-    const { photoId, deleted } = await request.json()
+    const body = await request.json() as { photoId?: string; deleted?: boolean }
+    const { photoId, deleted } = body
 
     if (!photoId || typeof deleted !== 'boolean') {
       return NextResponse.json(
