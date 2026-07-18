@@ -32,6 +32,25 @@ interface ExportProgress {
   status: 'downloading' | 'zipping' | 'complete'
 }
 
+// Resolve the URL to download for export. Cloudflare Images' public/thumbnail
+// variants are resized/re-encoded, so route those through our /blob proxy to
+// get the original uploaded file. R2 URLs already point at the original.
+const getOriginalDownloadUrl = (originalUrl: string): string => {
+  try {
+    const url = new URL(originalUrl)
+    if (url.hostname === 'imagedelivery.net') {
+      // https://imagedelivery.net/{accountHash}/{imageId}/{variant}
+      const [, imageId] = url.pathname.split('/').filter(Boolean)
+      if (imageId) {
+        return `/api/photos/download?id=${encodeURIComponent(imageId)}`
+      }
+    }
+  } catch {
+    // Fall through to the original URL on any parse error.
+  }
+  return originalUrl
+}
+
 // Simple obfuscation for the access code
 const validateAccess = (input: string): boolean => {
   const chars = [106, 101, 97, 110, 52, 48] // ASCII codes for j-e-a-n-4-0
@@ -181,7 +200,7 @@ export default function ManagePage() {
           try {
             setExportProgress(prev => prev ? { ...prev, currentFile: photo.originalFilename || photo.id } : null)
 
-            const response = await fetch(photo.originalUrl)
+            const response = await fetch(getOriginalDownloadUrl(photo.originalUrl))
             const blob = await response.blob()
             const filename = photo.originalFilename || `photo-${photo.id}.jpg`
 
@@ -258,7 +277,7 @@ export default function ManagePage() {
             try {
               setExportProgress(prev => prev ? { ...prev, currentFile: photo.originalFilename || photo.id } : null)
 
-              const response = await fetch(photo.originalUrl)
+              const response = await fetch(getOriginalDownloadUrl(photo.originalUrl))
               const blob = await response.blob()
               const filename = photo.originalFilename || `photo-${photo.id}.jpg`
 
